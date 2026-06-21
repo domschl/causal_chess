@@ -30,7 +30,8 @@ PlayStats self_play_loop(
     const std::string& save_dir = "checkpoints",
     int save_interval = 10,
     int max_moves = 200,
-    bool verbose = true
+    bool verbose = true,
+    bool resume = true
 );
 
 /**

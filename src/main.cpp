@@ -45,8 +45,17 @@ void print_global_help() {
     std::cout << "  play        Start a self-play training loop\n";
     std::cout << "  play-human  Play interactively against the model\n";
     std::cout << "  eval        Evaluate a single FEN position\n";
-    std::cout << "  move        Find the best move in a FEN position\n\n";
+    std::cout << "  move        Find the best move in a FEN position\n";
+    std::cout << "  plot        Plot training loss development using gnuplot\n\n";
     std::cout << "Run 'causal-chess-cpp <command> --help' for details on a specific command.\n";
+}
+
+void print_plot_help() {
+    std::cout << "Usage: causal-chess-cpp plot [options]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --save-dir <path>    Checkpoint directory (default: checkpoints)\n";
+    std::cout << "  --output <path>      Output plot image file path (default: show in terminal)\n";
+    std::cout << "  --watch              Live watch mode: updates every 2 seconds\n";
 }
 
 void print_play_human_help() {
@@ -170,7 +179,7 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Params:    " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
-    self_play_loop(engine, games, save_dir, save_interval, max_moves, true);
+    self_play_loop(engine, games, save_dir, save_interval, max_moves, true, !fresh);
     return 0;
 }
 
@@ -345,6 +354,98 @@ int handle_play_human(const std::vector<std::string>& args) {
     return 0;
 }
 
+bool has_gnuplot() {
+#ifdef _WIN32
+    return std::system("where gnuplot > NUL 2>&1") == 0;
+#else
+    return std::system("which gnuplot > /dev/null 2>&1") == 0;
+#endif
+}
+
+int handle_plot(const std::vector<std::string>& args) {
+    std::string save_dir = "checkpoints";
+    std::string output = "";
+    bool watch = false;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--help" || args[i] == "-h") {
+            print_plot_help();
+            return 0;
+        } else if (args[i] == "--save-dir" && i + 1 < args.size()) {
+            save_dir = args[++i];
+        } else if (args[i] == "--output" && i + 1 < args.size()) {
+            output = args[++i];
+        } else if (args[i] == "--watch") {
+            watch = true;
+        } else {
+            std::cerr << "Unknown plot option: " << args[i] << "\n";
+            return 1;
+        }
+    }
+
+    std::string csv_path = save_dir + "/loss.csv";
+    if (!std::filesystem::exists(csv_path)) {
+        std::cerr << "Error: Log file not found at " << csv_path << ". Run training first.\n";
+        return 1;
+    }
+
+    if (!has_gnuplot()) {
+        std::cerr << "Error: 'gnuplot' is not installed or not in PATH.\n";
+        std::cerr << "Please install gnuplot (e.g. 'brew install gnuplot') or inspect the log file directly in:\n";
+        std::cerr << "  " << csv_path << "\n";
+        return 1;
+    }
+
+    std::stringstream ss;
+    ss << "gnuplot -e \"set datafile separator ','; ";
+
+    if (!output.empty()) {
+        std::filesystem::path out_path(output);
+        std::string ext = out_path.extension().string();
+        for (auto& c : ext) c = std::tolower(c);
+
+        if (ext == ".png") {
+            ss << "set terminal png size 800,600; ";
+        } else if (ext == ".svg") {
+            ss << "set terminal svg size 800,600; ";
+        } else if (ext == ".pdf") {
+            ss << "set terminal pdf; ";
+        } else {
+            ss << "set terminal png size 800,600; ";
+        }
+        ss << "set output '" << output << "'; ";
+        ss << "set title 'TD Loss Development'; set xlabel 'Game'; set ylabel 'Average TD Loss'; ";
+        ss << "plot '" << csv_path << "' using 1:2 with lines title 'TD Loss'";
+    } else {
+        // terminal plotting
+        ss << "set terminal dumb 80 25; ";
+        ss << "set title 'TD Loss Development'; set xlabel 'Game'; set ylabel 'Avg Loss'; ";
+        ss << "plot '" << csv_path << "' using 1:2 with lines title 'Loss'";
+    }
+
+    if (watch) {
+        ss << "; while (1) { pause 2; replot }";
+    }
+
+    ss << "\"";
+
+    if (watch && output.empty()) {
+        std::cout << "Watching loss live. Press Ctrl+C to exit...\n\n";
+    }
+
+    int ret = std::system(ss.str().c_str());
+    if (ret != 0) {
+        std::cerr << "Gnuplot process exited with code " << ret << "\n";
+        return 1;
+    }
+
+    if (!output.empty()) {
+        std::cout << "Plot saved successfully to: " << output << "\n";
+    }
+
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         print_global_help();
@@ -366,6 +467,8 @@ int main(int argc, char* argv[]) {
             return handle_eval(args);
         } else if (command == "move") {
             return handle_move(args);
+        } else if (command == "plot") {
+            return handle_plot(args);
         } else if (command == "--help" || command == "-h") {
             print_global_help();
             return 0;

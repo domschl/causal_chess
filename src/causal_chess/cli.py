@@ -82,6 +82,18 @@ def main(argv: list[str] | None = None) -> None:
         "--device", type=str, default="cpu", help="Torch device (default: cpu)"
     )
 
+    # ---- plot ----
+    plot_parser = subparsers.add_parser("plot", help="Plot training loss development using gnuplot")
+    plot_parser.add_argument(
+        "--save-dir", type=str, default="checkpoints", help="Checkpoint directory (default: checkpoints)"
+    )
+    plot_parser.add_argument(
+        "--output", type=str, default=None, help="Output plot file (e.g., loss.png). Renders in terminal if omitted."
+    )
+    plot_parser.add_argument(
+        "--watch", action="store_true", help="Live watch mode: updates every 2 seconds"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "play":
@@ -90,6 +102,8 @@ def main(argv: list[str] | None = None) -> None:
         _cmd_eval(args)
     elif args.command == "move":
         _cmd_move(args)
+    elif args.command == "plot":
+        _cmd_plot(args)
 
 
 # ------------------------------------------------------------------
@@ -157,7 +171,68 @@ def _cmd_play(args: argparse.Namespace) -> None:
         save_dir=args.save_dir,
         save_interval=args.save_interval,
         max_moves=args.max_moves,
+        resume=not args.fresh,
     )
+
+
+def _cmd_plot(args: argparse.Namespace) -> None:
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    csv_path = Path(args.save_dir) / "loss.csv"
+    if not csv_path.is_file():
+        print(f"Error: Log file not found at {csv_path}. Run training first.", file=sys.stderr)
+        sys.exit(1)
+
+    if not shutil.which("gnuplot"):
+        print("Error: 'gnuplot' is not installed or not in PATH.", file=sys.stderr)
+        print("Please install gnuplot (e.g., 'brew install gnuplot') or inspect the log file directly in:", file=sys.stderr)
+        print(f"  {csv_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Base commands
+    commands = ["set datafile separator ','"]
+
+    if args.output:
+        out_path = Path(args.output)
+        ext = out_path.suffix.lower()
+        if ext == ".png":
+            commands.append("set terminal png size 800,600")
+        elif ext == ".svg":
+            commands.append("set terminal svg size 800,600")
+        elif ext == ".pdf":
+            commands.append("set terminal pdf")
+        else:
+            commands.append("set terminal png size 800,600")
+        commands.append(f"set output '{out_path}'")
+        commands.append("set title 'TD Loss Development'")
+        commands.append("set xlabel 'Game'")
+        commands.append("set ylabel 'Average TD Loss'")
+        commands.append(f"plot '{csv_path}' using 1:2 with lines title 'TD Loss'")
+    else:
+        # Terminal plotting
+        commands.append("set terminal dumb 80 25")
+        commands.append("set title 'TD Loss Development'")
+        commands.append("set xlabel 'Game'")
+        commands.append("set ylabel 'Avg Loss'")
+        commands.append(f"plot '{csv_path}' using 1:2 with lines title 'Loss'")
+
+    if args.watch:
+        commands.append("while (1) { pause 2; replot }")
+
+    cmd_str = "; ".join(commands)
+    try:
+        if args.watch and not args.output:
+            print("Watching loss live. Press Ctrl+C to exit...\n")
+        subprocess.run(["gnuplot", "-e", cmd_str], check=True)
+        if args.output:
+            print(f"Plot saved successfully to: {args.output}")
+    except KeyboardInterrupt:
+        print("\nExiting live watch mode.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error running gnuplot: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _cmd_eval(args: argparse.Namespace) -> None:

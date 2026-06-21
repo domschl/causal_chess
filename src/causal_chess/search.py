@@ -75,6 +75,7 @@ class Engine:
         # Monitoring counters (reset per game / per search_position call)
         self._total_loss: float = 0.0
         self._update_count: int = 0
+        self._positions_evaluated: int = 0
 
     # ------------------------------------------------------------------
     # Public API
@@ -147,10 +148,16 @@ class Engine:
         """Number of TD updates since the last reset."""
         return self._update_count
 
+    @property
+    def positions_evaluated(self) -> int:
+        """Number of positions evaluated since the last reset."""
+        return self._positions_evaluated
+
     def reset_stats(self) -> None:
         """Reset monitoring counters."""
         self._total_loss = 0.0
         self._update_count = 0
+        self._positions_evaluated = 0
 
     def evaluate(self, board: chess.Board) -> float:
         """Evaluate a position without searching (single forward pass).
@@ -161,6 +168,7 @@ class Engine:
         Returns:
             White-relative value in [0, 1].
         """
+        self._positions_evaluated += 1
         tensor = board_to_tensor(board).unsqueeze(0).to(self.device)
         with torch.no_grad():
             return self.model(tensor).item()
@@ -216,6 +224,7 @@ class Engine:
 
         # Leaf node — neural network evaluation (no TD update)
         if depth == 0:
+            self._positions_evaluated += 1
             tensor = board_to_tensor(board).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 return self.model(tensor).item()
@@ -275,6 +284,7 @@ class Engine:
             tensors.append(board_to_tensor(board))
             board.pop()
 
+        self._positions_evaluated += len(moves)
         batch = torch.stack(tensors).to(self.device)
         with torch.no_grad():
             scores = self.model(batch).squeeze(-1)  # (num_moves,)

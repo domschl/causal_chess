@@ -3,8 +3,38 @@
 #include <sstream>
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 
 namespace causal_chess {
+
+static int get_last_game_num(const std::string& csv_path) {
+    std::ifstream file(csv_path);
+    if (!file.is_open()) {
+        return 0;
+    }
+    std::string line;
+    std::string last_line;
+    // Skip header line
+    std::getline(file, line);
+    while (std::getline(file, line)) {
+        if (!line.empty()) {
+            last_line = line;
+        }
+    }
+    if (last_line.empty()) {
+        return 0;
+    }
+    std::stringstream ss(last_line);
+    std::string game_num_str;
+    if (std::getline(ss, game_num_str, ',')) {
+        try {
+            return std::stoi(game_num_str);
+        } catch (...) {
+            return 0;
+        }
+    }
+    return 0;
+}
 
 PlayStats self_play_loop(
     Engine& engine,
@@ -12,10 +42,23 @@ PlayStats self_play_loop(
     const std::string& save_dir,
     int save_interval,
     int max_moves,
-    bool verbose
+    bool verbose,
+    bool resume
 ) {
     PlayStats stats;
     std::filesystem::create_directories(save_dir);
+
+    std::string csv_path = save_dir + "/loss.csv";
+    int start_game_num = 0;
+    std::ofstream csv_file;
+    if (resume && std::filesystem::exists(csv_path)) {
+        start_game_num = get_last_game_num(csv_path);
+        csv_file.open(csv_path, std::ios::app);
+    } else {
+        csv_file.open(csv_path, std::ios::trunc);
+        csv_file << "game,loss,moves,time,nps\n";
+        csv_file.flush();
+    }
 
     for (int game_num = 1; game_num <= num_games; ++game_num) {
         auto game_start = std::chrono::steady_clock::now();
@@ -79,6 +122,21 @@ PlayStats self_play_loop(
         auto game_end = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = game_end - game_start;
 
+        // Write stats to CSV log
+        if (csv_file.is_open()) {
+            double total_search_time = engine.get_total_search_time_secs();
+            double nps = 0.0;
+            if (total_search_time > 0.0) {
+                nps = engine.get_positions_evaluated() / total_search_time;
+            }
+            csv_file << (start_game_num + game_num) << ","
+                     << engine.get_avg_loss() << ","
+                     << move_count << ","
+                     << elapsed.count() << ","
+                     << static_cast<int64_t>(nps) << "\n";
+            csv_file.flush();
+        }
+
         if (verbose) {
             int total = stats.white_wins + stats.black_wins + stats.draws;
             std::cout << "\n============================================================\n";
@@ -133,6 +191,10 @@ PlayStats self_play_loop(
 
     // Save final checkpoint
     engine.save_checkpoint(save_dir + "/checkpoint.pt");
+
+    if (csv_file.is_open()) {
+        csv_file.close();
+    }
 
     if (verbose) {
         std::cout << "============================================================\n";
