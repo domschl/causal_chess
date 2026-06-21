@@ -148,4 +148,131 @@ PlayStats self_play_loop(
     return stats;
 }
 
+static std::string piece_to_unicode(chess::Piece p) {
+    if (p == chess::Piece::NONE) {
+        return "·"; // U+00B7 middle dot
+    }
+
+    if (p.color() == chess::Color::WHITE) {
+        switch (p.type().internal()) {
+            case chess::PieceType::underlying::PAWN:   return "♙";
+            case chess::PieceType::underlying::KNIGHT: return "♘";
+            case chess::PieceType::underlying::BISHOP: return "♗";
+            case chess::PieceType::underlying::ROOK:   return "♖";
+            case chess::PieceType::underlying::QUEEN:  return "♕";
+            case chess::PieceType::underlying::KING:   return "♔";
+            default: return ".";
+        }
+    } else {
+        switch (p.type().internal()) {
+            case chess::PieceType::underlying::PAWN:   return "♟";
+            case chess::PieceType::underlying::KNIGHT: return "♞";
+            case chess::PieceType::underlying::BISHOP: return "♝";
+            case chess::PieceType::underlying::ROOK:   return "♜";
+            case chess::PieceType::underlying::QUEEN:  return "♛";
+            case chess::PieceType::underlying::KING:   return "♚";
+            default: return ".";
+        }
+    }
+}
+
+void print_board_unicode(const chess::Board& board, chess::Color perspective) {
+    std::cout << "\n";
+    if (perspective == chess::Color::WHITE) {
+        std::cout << "  a b c d e f g h\n";
+        for (int rank = 7; rank >= 0; --rank) {
+            std::cout << (rank + 1) << " ";
+            for (int file = 0; file < 8; ++file) {
+                chess::Square square(rank * 8 + file);
+                std::cout << piece_to_unicode(board.at(square)) << " ";
+            }
+            std::cout << (rank + 1) << "\n";
+        }
+        std::cout << "  a b c d e f g h\n";
+    } else {
+        std::cout << "  h g f e d c b a\n";
+        for (int rank = 0; rank < 8; ++rank) {
+            std::cout << (rank + 1) << " ";
+            for (int file = 7; file >= 0; --file) {
+                chess::Square square(rank * 8 + file);
+                std::cout << piece_to_unicode(board.at(square)) << " ";
+            }
+            std::cout << (rank + 1) << "\n";
+        }
+        std::cout << "  h g f e d c b a\n";
+    }
+    std::cout << "\n";
+}
+
+void play_human_loop(Engine& engine, chess::Color human_color) {
+    chess::Board board;
+
+    std::cout << "Game started! You are playing as " 
+              << (human_color == chess::Color::WHITE ? "White" : "Black") << ".\n";
+    std::cout << "Enter your moves in SAN (e.g. e4, Nf3) or UCI (e.g. e2e4) format.\n";
+
+    while (true) {
+        auto [reason, result] = board.isGameOver();
+        if (reason != chess::GameResultReason::NONE) {
+            print_board_unicode(board, human_color);
+            std::cout << "Game Over! ";
+            if (result == chess::GameResult::DRAW) {
+                std::cout << "It's a draw.\n";
+            } else if (result == chess::GameResult::LOSE) {
+                std::cout << (board.sideToMove() == chess::Color::WHITE ? "Black" : "White") << " wins by checkmate!\n";
+            }
+            break;
+        }
+
+        bool human_turn = (board.sideToMove() == human_color);
+
+        if (human_turn) {
+            print_board_unicode(board, human_color);
+            chess::Move move = chess::Move::NO_MOVE;
+            while (true) {
+                std::cout << "Your move: ";
+                std::string input;
+                if (!std::getline(std::cin, input)) {
+                    std::cout << "\nGame aborted.\n";
+                    return;
+                }
+                // Strip whitespace
+                if (!input.empty()) {
+                    input.erase(input.find_last_not_of(" \t\r\n") + 1);
+                    input.erase(0, input.find_first_not_of(" \t\r\n"));
+                }
+
+                if (input.empty()) continue;
+
+                // Try parsing as SAN
+                try {
+                    move = chess::uci::parseSan(board, input);
+                    if (move != chess::Move::NO_MOVE && board.isLegal(move)) {
+                        break;
+                    }
+                } catch (...) {}
+
+                // Try parsing as UCI
+                try {
+                    move = chess::uci::uciToMove(board, input);
+                    if (move != chess::Move::NO_MOVE && board.isLegal(move)) {
+                        break;
+                    }
+                } catch (...) {}
+
+                std::cout << "Invalid or illegal move. Try again.\n";
+            }
+
+            std::cout << "You played: " << chess::uci::moveToSan(board, move) << "\n";
+            board.makeMove(move);
+        } else {
+            std::cout << "Model is thinking...\n";
+            auto [best_move, value] = engine.search_position(board);
+            std::cout << "Model played: " << chess::uci::moveToSan(board, best_move) 
+                      << " (eval: " << value << ")\n";
+            board.makeMove(best_move);
+        }
+    }
+}
+
 } // namespace causal_chess

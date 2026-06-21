@@ -33,6 +33,22 @@ PlayStats self_play_loop(
     bool verbose = true
 );
 
+/**
+ * @brief Print the board to the terminal using Unicode chess symbols.
+ *
+ * @param board Current board state.
+ * @param perspective The player's color perspective.
+ */
+void print_board_unicode(const chess::Board& board, chess::Color perspective = chess::Color::WHITE);
+
+/**
+ * @brief Run an interactive game loop allowing a human to play against the model.
+ *
+ * @param engine The chess engine.
+ * @param human_color Color of the human player.
+ */
+void play_human_loop(Engine& engine, chess::Color human_color);
+
 } // namespace causal_chess
 
 #endif // CAUSAL_CHESS_PLAY_HPP

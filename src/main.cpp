@@ -35,10 +35,21 @@ std::string find_latest_checkpoint(const std::string& directory) {
 void print_global_help() {
     std::cout << "Usage: causal-chess-cpp <command> [options]\n\n";
     std::cout << "Commands:\n";
-    std::cout << "  play      Start a self-play training loop\n";
-    std::cout << "  eval      Evaluate a single FEN position\n";
-    std::cout << "  move      Find the best move in a FEN position\n\n";
+    std::cout << "  play        Start a self-play training loop\n";
+    std::cout << "  play-human  Play interactively against the model\n";
+    std::cout << "  eval        Evaluate a single FEN position\n";
+    std::cout << "  move        Find the best move in a FEN position\n\n";
     std::cout << "Run 'causal-chess-cpp <command> --help' for details on a specific command.\n";
+}
+
+void print_play_human_help() {
+    std::cout << "Usage: causal-chess-cpp play-human [options]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --depth <n>          Search depth (default: 4)\n";
+    std::cout << "  --top-n <n>          Moves to expand per node (default: 5)\n";
+    std::cout << "  --color <str>        Your color: white, black (default: white)\n";
+    std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
+    std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
 }
 
 void print_play_help() {
@@ -268,6 +279,65 @@ int handle_move(const std::vector<std::string>& args) {
     return 0;
 }
 
+int handle_play_human(const std::vector<std::string>& args) {
+    int depth = 4;
+    int top_n = 5;
+    std::string device = "cpu";
+    std::string color_str = "white";
+    std::string checkpoint_path = "";
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--help" || args[i] == "-h") {
+            print_play_human_help();
+            return 0;
+        } else if (args[i] == "--depth" && i + 1 < args.size()) {
+            depth = std::stoi(args[++i]);
+        } else if (args[i] == "--top-n" && i + 1 < args.size()) {
+            top_n = std::stoi(args[++i]);
+        } else if (args[i] == "--color" && i + 1 < args.size()) {
+            color_str = args[++i];
+        } else if (args[i] == "--checkpoint" && i + 1 < args.size()) {
+            checkpoint_path = args[++i];
+        } else if (args[i] == "--device" && i + 1 < args.size()) {
+            device = args[++i];
+        } else {
+            std::cerr << "Unknown play-human option: " << args[i] << "\n";
+            return 1;
+        }
+    }
+
+    chess::Color human_color = chess::Color::WHITE;
+    if (color_str == "black" || color_str == "b") {
+        human_color = chess::Color::BLACK;
+    } else if (color_str != "white" && color_str != "w") {
+        std::cerr << "Warning: unknown color '" << color_str << "', defaulting to White.\n";
+    }
+
+    SearchConfig config;
+    config.max_depth = depth;
+    config.top_n = top_n;
+    config.learning_rate = 0.0; // Freeze learning during human play
+    config.device = device;
+
+    Engine engine(config);
+
+    if (!checkpoint_path.empty()) {
+        engine.load_checkpoint(checkpoint_path);
+        std::cout << "Loaded checkpoint: " << checkpoint_path << "\n";
+    } else {
+        std::string latest = find_latest_checkpoint("checkpoints");
+        if (!latest.empty()) {
+            engine.load_checkpoint(latest);
+            std::cout << "Auto-resumed from latest checkpoint: " << latest << "\n";
+        } else {
+            std::cout << "No checkpoints found. Playing with fresh (random) weights.\n";
+        }
+    }
+
+    play_human_loop(engine, human_color);
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         print_global_help();
@@ -283,6 +353,8 @@ int main(int argc, char* argv[]) {
     try {
         if (command == "play") {
             return handle_play(args);
+        } else if (command == "play-human") {
+            return handle_play_human(args);
         } else if (command == "eval") {
             return handle_eval(args);
         } else if (command == "move") {
