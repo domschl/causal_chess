@@ -123,17 +123,16 @@ PlayStats self_play_loop(
 
         // Save checkpoint
         if (game_num % save_interval == 0) {
-            std::stringstream ss;
-            ss << save_dir << "/checkpoint_" << std::setw(4) << std::setfill('0') << game_num << ".pt";
-            engine.save_checkpoint(ss.str());
+            std::string checkpoint_path = save_dir + "/checkpoint.pt";
+            engine.save_checkpoint(checkpoint_path);
             if (verbose) {
-                std::cout << "  💾 Checkpoint saved: " << ss.str() << "\n\n";
+                std::cout << "  💾 Checkpoint saved: " << checkpoint_path << "\n\n";
             }
         }
     }
 
     // Save final checkpoint
-    engine.save_checkpoint(save_dir + "/checkpoint_final.pt");
+    engine.save_checkpoint(save_dir + "/checkpoint.pt");
 
     if (verbose) {
         std::cout << "============================================================\n";

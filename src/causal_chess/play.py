@@ -98,14 +98,14 @@ def self_play_loop(
 
         # Save checkpoint periodically
         if game_num % save_interval == 0:
-            checkpoint_path = save_path / f"checkpoint_{game_num:04d}.pt"
+            checkpoint_path = save_path / "checkpoint.pt"
             engine.save_checkpoint(checkpoint_path)
             if verbose:
                 print(f"  💾 Checkpoint saved: {checkpoint_path}")
                 print()
 
     # Final checkpoint
-    engine.save_checkpoint(save_path / "checkpoint_final.pt")
+    engine.save_checkpoint(save_path / "checkpoint.pt")
 
     if verbose:
         print("=" * 60)

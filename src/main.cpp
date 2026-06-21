@@ -9,12 +9,19 @@
 
 using namespace causal_chess;
 
-// Auto-detect the latest .pt checkpoint in a directory
+// Auto-detect the latest .pt checkpoint in a directory, prioritizing checkpoint.pt
 std::string find_latest_checkpoint(const std::string& directory) {
     namespace fs = std::filesystem;
     if (!fs::is_directory(directory)) {
         return "";
     }
+
+    // Prioritize checkpoint.pt if it exists
+    fs::path preferred = fs::path(directory) / "checkpoint.pt";
+    if (fs::is_regular_file(preferred)) {
+        return preferred.string();
+    }
+
     fs::path latest;
     fs::file_time_type latest_time;
     bool found = false;

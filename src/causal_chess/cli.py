@@ -98,12 +98,18 @@ def main(argv: list[str] | None = None) -> None:
 
 
 def _find_latest_checkpoint(directory: str) -> str | None:
-    """Find the most recently modified .pt file in a directory."""
+    """Find the latest checkpoint, prioritizing checkpoint.pt."""
     from pathlib import Path
 
     save_path = Path(directory)
     if not save_path.is_dir():
         return None
+    
+    # Prioritize the single checkpoint.pt file if it exists
+    preferred = save_path / "checkpoint.pt"
+    if preferred.is_file():
+        return str(preferred)
+
     checkpoints = sorted(save_path.glob("*.pt"), key=lambda p: p.stat().st_mtime)
     if not checkpoints:
         return None

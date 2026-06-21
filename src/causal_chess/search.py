@@ -166,15 +166,15 @@ class Engine:
             return self.model(tensor).item()
 
     def save_checkpoint(self, path: str | Path) -> None:
-        """Save model state_dict.
+        """Save model as a scripted module for C++ compatibility.
 
         Args:
             path: File path for the checkpoint.
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        # Save only the state_dict directly for C++ compatibility
-        torch.save(self.model.state_dict(), path)
+        scripted = torch.jit.script(self.model)
+        scripted.save(str(path))
 
     def load_checkpoint(self, path: str | Path) -> None:
         """Load model state from a checkpoint.
@@ -183,7 +183,9 @@ class Engine:
             path: File path to the checkpoint.
         """
         checkpoint = torch.load(path, map_location=self.device, weights_only=False)
-        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        if hasattr(checkpoint, "state_dict"):
+            state_dict = checkpoint.state_dict()
+        elif isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
             state_dict = checkpoint["model_state_dict"]
         else:
             state_dict = checkpoint
