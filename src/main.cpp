@@ -1,0 +1,286 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include <filesystem>
+#include <chrono>
+#include "search.hpp"
+#include "play.hpp"
+#include "chess.hpp"
+
+using namespace causal_chess;
+
+// Auto-detect the latest .pt checkpoint in a directory
+std::string find_latest_checkpoint(const std::string& directory) {
+    namespace fs = std::filesystem;
+    if (!fs::is_directory(directory)) {
+        return "";
+    }
+    fs::path latest;
+    fs::file_time_type latest_time;
+    bool found = false;
+
+    for (const auto& entry : fs::directory_iterator(directory)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".pt") {
+            auto time = entry.last_write_time();
+            if (!found || time > latest_time) {
+                latest_time = time;
+                latest = entry.path();
+                found = true;
+            }
+        }
+    }
+    return found ? latest.string() : "";
+}
+
+void print_global_help() {
+    std::cout << "Usage: causal-chess-cpp <command> [options]\n\n";
+    std::cout << "Commands:\n";
+    std::cout << "  play      Start a self-play training loop\n";
+    std::cout << "  eval      Evaluate a single FEN position\n";
+    std::cout << "  move      Find the best move in a FEN position\n\n";
+    std::cout << "Run 'causal-chess-cpp <command> --help' for details on a specific command.\n";
+}
+
+void print_play_help() {
+    std::cout << "Usage: causal-chess-cpp play [options]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --games <n>          Number of self-play games (default: 100)\n";
+    std::cout << "  --depth <n>          Search depth (default: 4)\n";
+    std::cout << "  --top-n <n>          Moves to expand per node (default: 5)\n";
+    std::cout << "  --lr <val>           Learning rate (default: 1e-4)\n";
+    std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
+    std::cout << "  --save-dir <path>    Checkpoint directory (default: checkpoints)\n";
+    std::cout << "  --save-interval <n>  Save checkpoint every n games (default: 10)\n";
+    std::cout << "  --max-moves <n>      Max moves per game (default: 200)\n";
+    std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
+    std::cout << "  --fresh              Ignore existing checkpoints and start fresh\n";
+}
+
+void print_eval_help() {
+    std::cout << "Usage: causal-chess-cpp eval <fen> [options]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --checkpoint <path>  Model checkpoint file\n";
+    std::cout << "  --device <str>       Torch device (default: cpu)\n";
+}
+
+void print_move_help() {
+    std::cout << "Usage: causal-chess-cpp move <fen> [options]\n\n";
+    std::cout << "Options:\n";
+    std::cout << "  --depth <n>          Search depth (default: 4)\n";
+    std::cout << "  --top-n <n>          Moves to expand per node (default: 5)\n";
+    std::cout << "  --lr <val>           Learning rate (default: 1e-4)\n";
+    std::cout << "  --checkpoint <path>  Model checkpoint file\n";
+    std::cout << "  --device <str>       Torch device (default: cpu)\n";
+}
+
+int handle_play(const std::vector<std::string>& args) {
+    int games = 100;
+    int depth = 4;
+    int top_n = 5;
+    double lr = 1e-4;
+    std::string device = "cpu";
+    std::string save_dir = "checkpoints";
+    int save_interval = 10;
+    int max_moves = 200;
+    std::string checkpoint_path = "";
+    bool fresh = false;
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i] == "--help" || args[i] == "-h") {
+            print_play_help();
+            return 0;
+        } else if (args[i] == "--games" && i + 1 < args.size()) {
+            games = std::stoi(args[++i]);
+        } else if (args[i] == "--depth" && i + 1 < args.size()) {
+            depth = std::stoi(args[++i]);
+        } else if (args[i] == "--top-n" && i + 1 < args.size()) {
+            top_n = std::stoi(args[++i]);
+        } else if (args[i] == "--lr" && i + 1 < args.size()) {
+            lr = std::stod(args[++i]);
+        } else if (args[i] == "--device" && i + 1 < args.size()) {
+            device = args[++i];
+        } else if (args[i] == "--save-dir" && i + 1 < args.size()) {
+            save_dir = args[++i];
+        } else if (args[i] == "--save-interval" && i + 1 < args.size()) {
+            save_interval = std::stoi(args[++i]);
+        } else if (args[i] == "--max-moves" && i + 1 < args.size()) {
+            max_moves = std::stoi(args[++i]);
+        } else if (args[i] == "--checkpoint" && i + 1 < args.size()) {
+            checkpoint_path = args[++i];
+        } else if (args[i] == "--fresh") {
+            fresh = true;
+        } else {
+            std::cerr << "Unknown play option: " << args[i] << "\n";
+            return 1;
+        }
+    }
+
+    SearchConfig config;
+    config.max_depth = depth;
+    config.top_n = top_n;
+    config.learning_rate = lr;
+    config.device = device;
+
+    Engine engine(config);
+
+    // Auto-resume logic
+    std::string loaded_checkpoint = "";
+    if (!checkpoint_path.empty()) {
+        engine.load_checkpoint(checkpoint_path);
+        loaded_checkpoint = checkpoint_path;
+    } else if (!fresh) {
+        std::string latest = find_latest_checkpoint(save_dir);
+        if (!latest.empty()) {
+            engine.load_checkpoint(latest);
+            loaded_checkpoint = latest;
+        }
+    }
+
+    if (!loaded_checkpoint.empty()) {
+        std::cout << "Resumed from checkpoint: " << loaded_checkpoint << "\n";
+    } else {
+        std::cout << "Starting with fresh (random) weights\n";
+    }
+
+    std::cout << "============================================================\n";
+    std::cout << "Causal Chess (C++) — Self-Play Training\n";
+    std::cout << "  Depth:     " << config.max_depth << "\n";
+    std::cout << "  Top-N:     " << config.top_n << "\n";
+    std::cout << "  LR:        " << config.learning_rate << "\n";
+    std::cout << "  Device:    " << engine.get_device() << "\n";
+    std::cout << "  Games:     " << games << "\n";
+    std::cout << "  Params:    " << engine.get_model()->param_count() << "\n";
+    std::cout << "============================================================\n";
+
+    self_play_loop(engine, games, save_dir, save_interval, max_moves, true);
+    return 0;
+}
+
+int handle_eval(const std::vector<std::string>& args) {
+    if (args.empty() || args[0] == "--help" || args[0] == "-h") {
+        print_eval_help();
+        return args.empty() ? 1 : 0;
+    }
+
+    std::string fen = args[0];
+    std::string checkpoint_path = "";
+    std::string device = "cpu";
+
+    for (size_t i = 1; i < args.size(); ++i) {
+        if (args[i] == "--checkpoint" && i + 1 < args.size()) {
+            checkpoint_path = args[++i];
+        } else if (args[i] == "--device" && i + 1 < args.size()) {
+            device = args[++i];
+        } else {
+            std::cerr << "Unknown eval option: " << args[i] << "\n";
+            return 1;
+        }
+    }
+
+    SearchConfig config;
+    config.device = device;
+    Engine engine(config);
+
+    if (!checkpoint_path.empty()) {
+        engine.load_checkpoint(checkpoint_path);
+    }
+
+    chess::Board board(fen);
+    float value = engine.evaluate(board);
+
+    std::cout << "FEN:   " << fen << "\n";
+    std::cout << "Value: " << value << "  (White-relative win probability)\n";
+    if (value > 0.55f) {
+        std::cout << "       → White is better\n";
+    } else if (value < 0.45f) {
+        std::cout << "       → Black is better\n";
+    } else {
+        std::cout << "       → Roughly equal\n";
+    }
+    return 0;
+}
+
+int handle_move(const std::vector<std::string>& args) {
+    if (args.empty() || args[0] == "--help" || args[0] == "-h") {
+        print_move_help();
+        return args.empty() ? 1 : 0;
+    }
+
+    std::string fen = args[0];
+    int depth = 4;
+    int top_n = 5;
+    double lr = 1e-4;
+    std::string checkpoint_path = "";
+    std::string device = "cpu";
+
+    for (size_t i = 1; i < args.size(); ++i) {
+        if (args[i] == "--depth" && i + 1 < args.size()) {
+            depth = std::stoi(args[++i]);
+        } else if (args[i] == "--top-n" && i + 1 < args.size()) {
+            top_n = std::stoi(args[++i]);
+        } else if (args[i] == "--lr" && i + 1 < args.size()) {
+            lr = std::stod(args[++i]);
+        } else if (args[i] == "--checkpoint" && i + 1 < args.size()) {
+            checkpoint_path = args[++i];
+        } else if (args[i] == "--device" && i + 1 < args.size()) {
+            device = args[++i];
+        } else {
+            std::cerr << "Unknown move option: " << args[i] << "\n";
+            return 1;
+        }
+    }
+
+    SearchConfig config;
+    config.max_depth = depth;
+    config.top_n = top_n;
+    config.learning_rate = lr;
+    config.device = device;
+
+    Engine engine(config);
+
+    if (!checkpoint_path.empty()) {
+        engine.load_checkpoint(checkpoint_path);
+    }
+
+    chess::Board board(fen);
+    auto [move, value] = engine.search_position(board);
+
+    std::cout << "FEN:   " << fen << "\n";
+    std::cout << "Move:  " << chess::uci::moveToSan(board, move) << "  (" << chess::uci::moveToUci(move) << ")\n";
+    std::cout << "Value: " << value << "  (White-relative)\n";
+    std::cout << "TD updates during search: " << engine.get_update_count() << "\n";
+    return 0;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        print_global_help();
+        return 1;
+    }
+
+    std::string command = argv[1];
+    std::vector<std::string> args;
+    for (int i = 2; i < argc; ++i) {
+        args.push_back(argv[i]);
+    }
+
+    try {
+        if (command == "play") {
+            return handle_play(args);
+        } else if (command == "eval") {
+            return handle_eval(args);
+        } else if (command == "move") {
+            return handle_move(args);
+        } else if (command == "--help" || command == "-h") {
+            print_global_help();
+            return 0;
+        } else {
+            std::cerr << "Unknown command: " << command << "\n\n";
+            print_global_help();
+            return 1;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
+}

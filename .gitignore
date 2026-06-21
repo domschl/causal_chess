@@ -1,0 +1,25 @@
+# C++ build directories
+build/
+bin/
+lib/
+
+# PyTorch checkpoints
+checkpoints/
+
+# Python virtual environment
+.venv/
+
+# Python cache & testing
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# IDE & OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+

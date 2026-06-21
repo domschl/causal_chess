@@ -1,0 +1,26 @@
+[project]
+name = "causal-chess"
+version = "0.1.0"
+description = "Chess engine that learns its value function during search via temporal-difference learning"
+requires-python = ">=3.11"
+dependencies = [
+    "chess",
+    "torch",
+    "numpy",
+]
+
+[project.scripts]
+causal-chess = "causal_chess.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/causal_chess"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = ["pytest", "pyrefly"]
