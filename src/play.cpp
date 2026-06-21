@@ -82,9 +82,23 @@ PlayStats self_play_loop(
         if (verbose) {
             int total = stats.white_wins + stats.black_wins + stats.draws;
             std::cout << "\n============================================================\n";
+            double total_search_time = engine.get_total_search_time_secs();
+            double nps = 0.0;
+            double pct_forward = 0.0;
+            double pct_backprop = 0.0;
+
+            if (total_search_time > 0.0) {
+                nps = engine.get_positions_evaluated() / total_search_time;
+                pct_forward = (engine.get_forward_time_secs() / total_search_time) * 100.0;
+                pct_backprop = (engine.get_backprop_time_secs() / total_search_time) * 100.0;
+            }
+
             std::cout << "Game " << game_num << "/" << num_games << ": " << result << "\n";
             std::cout << "  Moves:       " << (move_count + 1) / 2 << "\n";
-            std::cout << "  Time:        " << elapsed.count() << "s\n";
+            std::cout << "  Time:        " << elapsed.count() << "s (Search: " << total_search_time << "s)\n";
+            std::cout << "  Speed:       " << static_cast<int64_t>(nps) << " positions/sec\n";
+            std::cout << "  Forward:     " << pct_forward << "%\n";
+            std::cout << "  Backprop:    " << pct_backprop << "%\n";
             std::cout << "  TD updates:  " << engine.get_update_count() << "\n";
             std::cout << "  Avg TD loss: " << engine.get_avg_loss() << "\n";
             std::cout << "  Record:      W=" << stats.white_wins << "  B=" << stats.black_wins << "  D=" << stats.draws << "  (" << total << " games)\n";

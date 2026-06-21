@@ -44,6 +44,12 @@ public:
     int get_update_count() const;
     void reset_stats();
 
+    // Performance metrics
+    int64_t get_positions_evaluated() const;
+    double get_forward_time_secs() const;
+    double get_backprop_time_secs() const;
+    double get_total_search_time_secs() const;
+
     // Checkpoint management
     void save_checkpoint(const std::string& path);
     void load_checkpoint(const std::string& path);
@@ -65,6 +71,11 @@ private:
 
     double total_loss = 0.0;
     int update_count = 0;
+
+    int64_t positions_evaluated = 0;
+    double forward_time_secs = 0.0;
+    double backprop_time_secs = 0.0;
+    double total_search_time_secs = 0.0;
 };
 
 } // namespace causal_chess

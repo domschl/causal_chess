@@ -245,10 +245,26 @@ int handle_move(const std::vector<std::string>& args) {
     chess::Board board(fen);
     auto [move, value] = engine.search_position(board);
 
+    double total_search_time = engine.get_total_search_time_secs();
+    double nps = 0.0;
+    double pct_forward = 0.0;
+    double pct_backprop = 0.0;
+
+    if (total_search_time > 0.0) {
+        nps = engine.get_positions_evaluated() / total_search_time;
+        pct_forward = (engine.get_forward_time_secs() / total_search_time) * 100.0;
+        pct_backprop = (engine.get_backprop_time_secs() / total_search_time) * 100.0;
+    }
+
     std::cout << "FEN:   " << fen << "\n";
     std::cout << "Move:  " << chess::uci::moveToSan(board, move) << "  (" << chess::uci::moveToUci(move) << ")\n";
     std::cout << "Value: " << value << "  (White-relative)\n";
-    std::cout << "TD updates during search: " << engine.get_update_count() << "\n";
+    std::cout << "Performance:\n";
+    std::cout << "  Search time: " << total_search_time << "s\n";
+    std::cout << "  Speed:       " << static_cast<int64_t>(nps) << " positions/sec\n";
+    std::cout << "  Forward:     " << pct_forward << "%\n";
+    std::cout << "  Backprop:    " << pct_backprop << "%\n";
+    std::cout << "  TD updates:  " << engine.get_update_count() << "\n";
     return 0;
 }
 

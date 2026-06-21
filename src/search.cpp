@@ -45,6 +45,7 @@ Engine::Engine(const SearchConfig& config, ValueNetwork model)
 }
 
 std::pair<chess::Move, float> Engine::search_position(chess::Board& board) {
+    auto start = std::chrono::steady_clock::now();
     chess::Movelist moves;
     chess::movegen::legalmoves(moves, board);
 
@@ -94,6 +95,10 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board) {
 
     // 5. Root TD update
     _td_update(board, best_value);
+
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    total_search_time_secs += elapsed.count();
 
     return {best_move, best_value};
 }
@@ -158,6 +163,7 @@ float Engine::_search(chess::Board& board, int depth) {
 }
 
 std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& board, const chess::Movelist& moves) {
+    positions_evaluated += moves.size();
     std::vector<chess::Board> child_boards;
     child_boards.reserve(moves.size());
 
@@ -167,6 +173,7 @@ std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& bo
         board.unmakeMove(move);
     }
 
+    auto start = std::chrono::steady_clock::now();
     torch::Tensor batch_tensor = batch_boards_to_tensor(child_boards).to(device);
 
     torch::Tensor scores_tensor;
@@ -174,6 +181,9 @@ std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& bo
         torch::NoGradGuard no_grad;
         scores_tensor = model->forward(batch_tensor).squeeze(-1); // Shape: (num_moves)
     }
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    forward_time_secs += elapsed.count();
 
     // Move scores from device to host CPU vector
     scores_tensor = scores_tensor.to(torch::kCPU);
@@ -189,6 +199,7 @@ std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& bo
 }
 
 void Engine::_td_update(const chess::Board& board, float target_value) {
+    auto start_f = std::chrono::steady_clock::now();
     torch::Tensor tensor = board_to_tensor(board).unsqueeze(0).to(device);
     torch::Tensor target = torch::tensor({{target_value}}, torch::dtype(torch::kFloat32).device(device));
 
@@ -196,6 +207,11 @@ void Engine::_td_update(const chess::Board& board, float target_value) {
     optimizer->zero_grad();
 
     torch::Tensor prediction = model->forward(tensor);
+    auto end_f = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed_f = end_f - start_f;
+    forward_time_secs += elapsed_f.count();
+
+    auto start_b = std::chrono::steady_clock::now();
     torch::Tensor loss = torch::nn::functional::mse_loss(prediction, target);
     loss.backward();
 
@@ -203,18 +219,27 @@ void Engine::_td_update(const chess::Board& board, float target_value) {
     torch::nn::utils::clip_grad_norm_(model->parameters(), config.grad_clip);
     optimizer->step();
     model->eval();
+    auto end_b = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed_b = end_b - start_b;
+    backprop_time_secs += elapsed_b.count();
 
     total_loss += loss.item<double>();
     update_count++;
 }
 
 float Engine::evaluate(const chess::Board& board) {
+    positions_evaluated += 1;
+    auto start = std::chrono::steady_clock::now();
     torch::Tensor tensor = board_to_tensor(board).unsqueeze(0).to(device);
     torch::Tensor out;
     {
         torch::NoGradGuard no_grad;
         out = model->forward(tensor);
     }
+    auto end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    forward_time_secs += elapsed.count();
+
     return out.item<float>();
 }
 
@@ -249,9 +274,29 @@ int Engine::get_update_count() const {
     return update_count;
 }
 
+int64_t Engine::get_positions_evaluated() const {
+    return positions_evaluated;
+}
+
+double Engine::get_forward_time_secs() const {
+    return forward_time_secs;
+}
+
+double Engine::get_backprop_time_secs() const {
+    return backprop_time_secs;
+}
+
+double Engine::get_total_search_time_secs() const {
+    return total_search_time_secs;
+}
+
 void Engine::reset_stats() {
     total_loss = 0.0;
     update_count = 0;
+    positions_evaluated = 0;
+    forward_time_secs = 0.0;
+    backprop_time_secs = 0.0;
+    total_search_time_secs = 0.0;
 }
 
 void Engine::save_checkpoint(const std::string& path) {
