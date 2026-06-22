@@ -118,9 +118,15 @@ class Engine:
         move_scores.sort(key=lambda ms: ms[1], reverse=is_white)
         top_moves = move_scores[: self.config.top_n]
 
-        # Search each top move
+        # Add all checks and captures from the remaining moves
+        selected_moves = list(top_moves)
+        for move, score in move_scores[self.config.top_n:]:
+            if board.is_capture(move) or board.gives_check(move):
+                selected_moves.append((move, score))
+
+        # Search each selected move
         searched_moves: list[tuple[chess.Move, float]] = []
-        for move, _ in top_moves:
+        for move, _ in selected_moves:
             board.push(move)
             v = self._search(board, self.config.max_depth - 1)
             board.pop()
@@ -261,9 +267,15 @@ class Engine:
         move_scores.sort(key=lambda ms: ms[1], reverse=is_white)
         top_moves = move_scores[: self.config.top_n]
 
+        # Add all checks and captures from the remaining moves
+        selected_moves = list(top_moves)
+        for move, score in move_scores[self.config.top_n:]:
+            if board.is_capture(move) or board.gives_check(move):
+                selected_moves.append((move, score))
+
         # Recursively search selected moves
         best_value: float | None = None
-        for move, _ in top_moves:
+        for move, _ in selected_moves:
             board.push(move)
             v = self._search(board, depth - 1)
             board.pop()

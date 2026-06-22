@@ -72,13 +72,21 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
 
     // 3. Keep top-N moves
     int keep = std::min(static_cast<int>(move_scores.size()), config.top_n);
-    std::vector<std::pair<chess::Move, float>> top_moves(move_scores.begin(), move_scores.begin() + keep);
+    std::vector<std::pair<chess::Move, float>> selected_moves(move_scores.begin(), move_scores.begin() + keep);
+
+    // Add all checks and captures from the remaining moves
+    for (size_t i = keep; i < move_scores.size(); ++i) {
+        const auto& ms = move_scores[i];
+        if (board.isCapture(ms.first) || board.givesCheck(ms.first) != chess::CheckType::NO_CHECK) {
+            selected_moves.push_back(ms);
+        }
+    }
 
     // 4. Search recursively
     std::vector<std::pair<chess::Move, float>> searched_moves;
-    searched_moves.reserve(top_moves.size());
+    searched_moves.reserve(selected_moves.size());
 
-    for (const auto& ms : top_moves) {
+    for (const auto& ms : selected_moves) {
         board.makeMove(ms.first);
         float val = _search(board, config.max_depth - 1);
         board.unmakeMove(ms.first);
@@ -180,11 +188,19 @@ float Engine::_search(chess::Board& board, int depth) {
     });
 
     int keep = std::min(static_cast<int>(move_scores.size()), config.top_n);
-    std::vector<std::pair<chess::Move, float>> top_moves(move_scores.begin(), move_scores.begin() + keep);
+    std::vector<std::pair<chess::Move, float>> selected_moves(move_scores.begin(), move_scores.begin() + keep);
+
+    // Add all checks and captures from the remaining moves
+    for (size_t i = keep; i < move_scores.size(); ++i) {
+        const auto& ms = move_scores[i];
+        if (board.isCapture(ms.first) || board.givesCheck(ms.first) != chess::CheckType::NO_CHECK) {
+            selected_moves.push_back(ms);
+        }
+    }
 
     // 5. Search recursively
     float best_value = is_white ? -1.0f : 2.0f;
-    for (const auto& ms : top_moves) {
+    for (const auto& ms : selected_moves) {
         board.makeMove(ms.first);
         float val = _search(board, depth - 1);
         board.unmakeMove(ms.first);
