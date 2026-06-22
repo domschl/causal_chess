@@ -46,10 +46,10 @@ class TestValueNetwork:
         assert has_grad, "No gradients were computed"
 
     def test_param_count_reasonable(self) -> None:
-        """Model should be small (< 200K params)."""
+        """Model should be small (< 400K params)."""
         model = ValueNetwork()
         count = model.param_count()
-        assert count < 200_000, f"Model too large: {count} params"
+        assert count < 400_000, f"Model too large: {count} params"
         assert count > 10_000, f"Model too small: {count} params"
 
     def test_deterministic_eval_mode(self) -> None:

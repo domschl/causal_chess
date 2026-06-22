@@ -1,10 +1,12 @@
-"""Value network: a small CNN that maps board tensors to a scalar in [0, 1].
+"""Value network: a CNN that maps board tensors to a scalar in [0, 1].
 
 Architecture:
     Input (15 × 8 × 8)
-      → Conv2d(15, 32, 3, padding=1) → ReLU
-      → Conv2d(32, 64, 3, padding=1) → ReLU
+      → Conv2d(15, 32, 3, padding=1)  → GroupNorm(8, 32)  → ReLU
+      → Conv2d(32, 64, 3, padding=1)  → ReLU
+      → Conv2d(64, 64, 3, padding=1)  → ReLU
       → Conv2d(64, 128, 3, padding=1) → ReLU
+      → Conv2d(128, 128, 3, padding=1)→ GroupNorm(8, 128) → ReLU
       → AdaptiveAvgPool2d(1)          → (128, 1, 1)
       → Flatten
       → Linear(128, 64) → ReLU
@@ -12,9 +14,7 @@ Architecture:
 
 Output is White-relative win probability: 1.0 = White wins, 0.0 = Black wins.
 
-No batch normalisation is used — online TD learning often updates with
-batch_size=1, which makes BatchNorm unreliable.  The model is small enough
-(~105 K parameters) to train stably without normalisation.
+GroupNorm is used for stable online updates where batch sizes are very small (e.g. 2).
 """
 
 import torch
@@ -38,9 +38,12 @@ class ValueNetwork(nn.Module):
             nn.GroupNorm(8, 32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.GroupNorm(8, 64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.GroupNorm(8, 128),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d(1),  # (batch, 128, 1, 1)
