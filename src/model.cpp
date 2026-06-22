@@ -6,10 +6,13 @@ ValueNetworkImpl::ValueNetworkImpl(int in_channels) {
     // Define Conv layers (no batch norm for stable online updates)
     conv_layers = register_module("conv_layers", torch::nn::Sequential(
         torch::nn::Conv2d(torch::nn::Conv2dOptions(in_channels, 32, 3).padding(1)),
+        torch::nn::GroupNorm(torch::nn::GroupNormOptions(8, 32)),
         torch::nn::Functional(torch::relu),
         torch::nn::Conv2d(torch::nn::Conv2dOptions(32, 64, 3).padding(1)),
+        torch::nn::GroupNorm(torch::nn::GroupNormOptions(8, 64)),
         torch::nn::Functional(torch::relu),
         torch::nn::Conv2d(torch::nn::Conv2dOptions(64, 128, 3).padding(1)),
+        torch::nn::GroupNorm(torch::nn::GroupNormOptions(8, 128)),
         torch::nn::Functional(torch::relu),
         torch::nn::AdaptiveAvgPool2d(1) // Output shape: (batch, 128, 1, 1)
     ));

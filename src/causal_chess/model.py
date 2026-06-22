@@ -35,10 +35,13 @@ class ValueNetwork(nn.Module):
 
         self.conv_layers = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
+            nn.GroupNorm(8, 32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.GroupNorm(8, 128),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d(1),  # (batch, 128, 1, 1)
         )
