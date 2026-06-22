@@ -51,6 +51,7 @@ public:
     double get_forward_time_secs() const;
     double get_backprop_time_secs() const;
     double get_total_search_time_secs() const;
+    double get_total_post_game_train_time_secs() const;
 
     // Post-game outcome training pass
     void train_on_outcome(const std::vector<chess::Board>& boards, float outcome);
@@ -81,6 +82,7 @@ private:
     double forward_time_secs = 0.0;
     double backprop_time_secs = 0.0;
     double total_search_time_secs = 0.0;
+    double total_post_game_train_time_secs = 0.0;
 };
 
 } // namespace causal_chess

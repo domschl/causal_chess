@@ -354,6 +354,10 @@ double Engine::get_total_search_time_secs() const {
     return total_search_time_secs;
 }
 
+double Engine::get_total_post_game_train_time_secs() const {
+    return total_post_game_train_time_secs;
+}
+
 void Engine::reset_stats() {
     total_loss = 0.0;
     update_count = 0;
@@ -361,10 +365,12 @@ void Engine::reset_stats() {
     forward_time_secs = 0.0;
     backprop_time_secs = 0.0;
     total_search_time_secs = 0.0;
+    total_post_game_train_time_secs = 0.0;
 }
 
 void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float outcome) {
     if (boards.empty()) return;
+    auto train_start = std::chrono::steady_clock::now();
 
     // Mini-batch size of 16 board pairs (32 boards total after symmetry)
     const size_t batch_size = 16;
@@ -409,6 +415,10 @@ void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float out
         }
     }
     model->eval();
+
+    auto train_end = std::chrono::steady_clock::now();
+    std::chrono::duration<double> elapsed = train_end - train_start;
+    total_post_game_train_time_secs += elapsed.count();
 }
 
 void Engine::save_checkpoint(const std::string& path) {

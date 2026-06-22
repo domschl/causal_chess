@@ -156,13 +156,16 @@ PlayStats self_play_loop(
 
             if (total_search_time > 0.0) {
                 nps = engine.get_positions_evaluated() / total_search_time;
-                pct_forward = (engine.get_forward_time_secs() / total_search_time) * 100.0;
-                pct_backprop = (engine.get_backprop_time_secs() / total_search_time) * 100.0;
+            }
+            double total_engine_time = total_search_time + engine.get_total_post_game_train_time_secs();
+            if (total_engine_time > 0.0) {
+                pct_forward = (engine.get_forward_time_secs() / total_engine_time) * 100.0;
+                pct_backprop = (engine.get_backprop_time_secs() / total_engine_time) * 100.0;
             }
 
             std::cout << "Game " << game_num << "/" << num_games << ": " << result << "\n";
             std::cout << "  Moves:       " << (move_count + 1) / 2 << "\n";
-            std::cout << "  Time:        " << elapsed.count() << "s (Search: " << total_search_time << "s)\n";
+            std::cout << "  Time:        " << elapsed.count() << "s (Search: " << total_search_time << "s, Train: " << engine.get_total_post_game_train_time_secs() << "s)\n";
             std::cout << "  Speed:       " << static_cast<int64_t>(nps) << " positions/sec\n";
             std::cout << "  Forward:     " << pct_forward << "%\n";
             std::cout << "  Backprop:    " << pct_backprop << "%\n";
