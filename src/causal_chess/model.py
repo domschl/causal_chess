@@ -3,9 +3,9 @@
 Architecture:
     Input (15 × 8 × 8)
       → Conv2d(15, 32, 3, padding=1)  → GroupNorm(8, 32)  → ReLU
-      → Conv2d(32, 64, 3, padding=1)  → ReLU
-      → Conv2d(64, 64, 3, padding=1)  → ReLU
-      → Conv2d(64, 128, 3, padding=1) → ReLU
+      → Conv2d(32, 64, 3, padding=1)  → GroupNorm(8, 64)  → ReLU
+      → Conv2d(64, 64, 3, padding=1)  → GroupNorm(8, 64)  → ReLU
+      → Conv2d(64, 128, 3, padding=1) → GroupNorm(8, 128) → ReLU
       → Conv2d(128, 128, 3, padding=1)→ GroupNorm(8, 128) → ReLU
       → AdaptiveAvgPool2d(1)          → (128, 1, 1)
       → Flatten
@@ -38,10 +38,13 @@ class ValueNetwork(nn.Module):
             nn.GroupNorm(8, 32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.GroupNorm(8, 128),
             nn.ReLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.GroupNorm(8, 128),
