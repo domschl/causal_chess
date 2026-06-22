@@ -246,7 +246,7 @@ void Engine::_td_update(const chess::Board& board, float target_value) {
     auto start_f = std::chrono::steady_clock::now();
     torch::Tensor orig_tensor = board_to_tensor(board);
     // Flip along files dimension (dim 2) for horizontal symmetry
-    torch::Tensor mirrored_tensor = torch::flip(orig_tensor, {2});
+    torch::Tensor mirrored_tensor = torch::flip(orig_tensor, {2}).clone();
 
     torch::Tensor batch = torch::stack({orig_tensor, mirrored_tensor}).to(device);
     torch::Tensor target = torch::tensor({{target_value}, {target_value}}, torch::dtype(torch::kFloat32).device(device));

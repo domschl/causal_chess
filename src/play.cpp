@@ -41,7 +41,6 @@ PlayStats self_play_loop(
     int num_games,
     const std::string& save_dir,
     int save_interval,
-    int max_moves,
     bool verbose,
     bool resume
 ) {
@@ -69,8 +68,8 @@ PlayStats self_play_loop(
         std::vector<float> move_evals;
         int move_count = 0;
 
-        // Play game until termination or max moves
-        while (board.isGameOver().first == chess::GameResultReason::NONE && move_count < max_moves) {
+        // Play game until termination
+        while (board.isGameOver().first == chess::GameResultReason::NONE) {
             auto [best_move, value] = engine.search_position(board);
 
             // Record SAN string before making move
@@ -116,9 +115,6 @@ PlayStats self_play_loop(
             } else {
                 stats.draws++;
             }
-        } else {
-            // Max moves draw
-            stats.draws++;
         }
 
         auto game_end = std::chrono::steady_clock::now();

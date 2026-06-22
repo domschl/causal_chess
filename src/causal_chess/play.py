@@ -44,7 +44,6 @@ def self_play_loop(
     num_games: int = 100,
     save_dir: str | Path = "checkpoints",
     save_interval: int = 10,
-    max_moves: int = 200,
     verbose: bool = True,
     resume: bool = True,
 ) -> dict[str, int]:
@@ -59,7 +58,6 @@ def self_play_loop(
         num_games: Number of games to play.
         save_dir: Directory for model checkpoints.
         save_interval: Save a checkpoint every N games.
-        max_moves: Maximum moves per game before declaring a draw.
         verbose: If ``True``, print game summaries and PGN.
         resume: If ``True``, appends to CSV log and continues game numbering.
 
@@ -100,13 +98,9 @@ def self_play_loop(
             game.headers["Black"] = "CausalChess"
             game.headers["Round"] = str(game_num)
             node = game
-
             move_count = 0
 
             while not board.is_game_over(claim_draw=True):
-                if move_count >= max_moves:
-                    break
-
                 best_move, value = engine.search_position(board)
                 board.push(best_move)
                 node = node.add_variation(best_move)
@@ -116,19 +110,14 @@ def self_play_loop(
                 move_count += 1
 
             # Determine result
-            if board.is_game_over(claim_draw=True):
-                outcome = board.outcome(claim_draw=True)
-                if outcome is not None and outcome.winner == chess.WHITE:
-                    result = "1-0"
-                    stats["white_wins"] += 1
-                elif outcome is not None and outcome.winner == chess.BLACK:
-                    result = "0-1"
-                    stats["black_wins"] += 1
-                else:
-                    result = "1/2-1/2"
-                    stats["draws"] += 1
+            outcome = board.outcome(claim_draw=True)
+            if outcome is not None and outcome.winner == chess.WHITE:
+                result = "1-0"
+                stats["white_wins"] += 1
+            elif outcome is not None and outcome.winner == chess.BLACK:
+                result = "0-1"
+                stats["black_wins"] += 1
             else:
-                # Max moves reached — declare draw
                 result = "1/2-1/2"
                 stats["draws"] += 1
 
@@ -180,12 +169,11 @@ def self_play_loop(
                 pass
 
 
-def play_single_game(engine: Engine, max_moves: int = 200) -> chess.pgn.Game:
+def play_single_game(engine: Engine) -> chess.pgn.Game:
     """Play a single self-play game and return the PGN.
 
     Args:
         engine: The chess engine.
-        max_moves: Maximum number of moves before declaring a draw.
 
     Returns:
         A ``chess.pgn.Game`` object with the completed game.
@@ -199,8 +187,6 @@ def play_single_game(engine: Engine, max_moves: int = 200) -> chess.pgn.Game:
 
     move_count = 0
     while not board.is_game_over(claim_draw=True):
-        if move_count >= max_moves:
-            break
         best_move, value = engine.search_position(board)
         board.push(best_move)
         node = node.add_variation(best_move)
@@ -209,14 +195,11 @@ def play_single_game(engine: Engine, max_moves: int = 200) -> chess.pgn.Game:
         node.comment = f"{pseudo_cp:+.2f}"
         move_count += 1
 
-    if board.is_game_over(claim_draw=True):
-        outcome = board.outcome(claim_draw=True)
-        if outcome is not None and outcome.winner == chess.WHITE:
-            game.headers["Result"] = "1-0"
-        elif outcome is not None and outcome.winner == chess.BLACK:
-            game.headers["Result"] = "0-1"
-        else:
-            game.headers["Result"] = "1/2-1/2"
+    outcome = board.outcome(claim_draw=True)
+    if outcome is not None and outcome.winner == chess.WHITE:
+        game.headers["Result"] = "1-0"
+    elif outcome is not None and outcome.winner == chess.BLACK:
+        game.headers["Result"] = "0-1"
     else:
         game.headers["Result"] = "1/2-1/2"
 

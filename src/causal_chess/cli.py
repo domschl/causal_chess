@@ -43,9 +43,7 @@ def main(argv: list[str] | None = None) -> None:
     play_parser.add_argument(
         "--save-interval", type=int, default=10, help="Save checkpoint every N games (default: 10)"
     )
-    play_parser.add_argument(
-        "--max-moves", type=int, default=200, help="Max moves per game (default: 200)"
-    )
+
     play_parser.add_argument(
         "--checkpoint", type=str, default=None, help="Resume from a specific checkpoint file"
     )
@@ -175,7 +173,6 @@ def _cmd_play(args: argparse.Namespace) -> None:
         num_games=args.games,
         save_dir=args.save_dir,
         save_interval=args.save_interval,
-        max_moves=args.max_moves,
         resume=not args.fresh,
     )
 

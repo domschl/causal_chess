@@ -20,7 +20,6 @@ struct PlayStats {
  * @param num_games Number of games to play.
  * @param save_dir Directory where model checkpoints will be saved.
  * @param save_interval How often (in games) to save checkpoints.
- * @param max_moves Maximum moves before declaring a draw.
  * @param verbose If true, print detailed summaries and PGN of games.
  * @return PlayStats containing outcomes of the self-play loop.
  */
@@ -29,7 +28,6 @@ PlayStats self_play_loop(
     int num_games = 100,
     const std::string& save_dir = "checkpoints",
     int save_interval = 10,
-    int max_moves = 200,
     bool verbose = true,
     bool resume = true
 );

@@ -322,7 +322,7 @@ class Engine:
         """
         orig_tensor = board_to_tensor(board)
         # Flip along files dimension (dim 2) for horizontal symmetry
-        mirrored_tensor = torch.flip(orig_tensor, dims=[2])
+        mirrored_tensor = torch.flip(orig_tensor, dims=[2]).clone()
 
         batch = torch.stack([orig_tensor, mirrored_tensor]).to(self.device)
         target = torch.tensor(

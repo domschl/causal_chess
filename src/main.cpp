@@ -78,7 +78,6 @@ void print_play_help() {
     std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
     std::cout << "  --save-dir <path>    Checkpoint directory (default: checkpoints)\n";
     std::cout << "  --save-interval <n>  Save checkpoint every n games (default: 10)\n";
-    std::cout << "  --max-moves <n>      Max moves per game (default: 200)\n";
     std::cout << "  --temperature <val>  Exploration temperature for self-play (default: 0.0)\n";
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --fresh              Ignore existing checkpoints and start fresh\n";
@@ -109,7 +108,6 @@ int handle_play(const std::vector<std::string>& args) {
     std::string device = "cpu";
     std::string save_dir = "checkpoints";
     int save_interval = 10;
-    int max_moves = 200;
     std::string checkpoint_path = "";
     bool fresh = false;
     double temperature = 0.0;
@@ -132,8 +130,6 @@ int handle_play(const std::vector<std::string>& args) {
             save_dir = args[++i];
         } else if (args[i] == "--save-interval" && i + 1 < args.size()) {
             save_interval = std::stoi(args[++i]);
-        } else if (args[i] == "--max-moves" && i + 1 < args.size()) {
-            max_moves = std::stoi(args[++i]);
         } else if (args[i] == "--checkpoint" && i + 1 < args.size()) {
             checkpoint_path = args[++i];
         } else if (args[i] == "--fresh") {
@@ -185,7 +181,7 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Params:      " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
-    self_play_loop(engine, games, save_dir, save_interval, max_moves, true, !fresh);
+    self_play_loop(engine, games, save_dir, save_interval, true, !fresh);
     return 0;
 }
 
