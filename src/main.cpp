@@ -80,6 +80,7 @@ void print_play_help() {
     std::cout << "  --save-interval <n>    Save checkpoint every n games (default: 10)\n";
     std::cout << "  --temperature <val>    Exploration temperature for self-play (default: 0.0)\n";
     std::cout << "  --post-game-epochs <n> Number of epochs for post-game outcome training (default: 20)\n";
+    std::cout << "  --discount-factor <val> Decay factor for post-game outcome training (default: 0.97)\n";
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
 }
@@ -113,6 +114,7 @@ int handle_play(const std::vector<std::string>& args) {
     bool fresh = false;
     double temperature = 0.0;
     int post_game_epochs = 20;
+    double discount_factor = 0.97;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -140,6 +142,8 @@ int handle_play(const std::vector<std::string>& args) {
             temperature = std::stod(args[++i]);
         } else if (args[i] == "--post-game-epochs" && i + 1 < args.size()) {
             post_game_epochs = std::stoi(args[++i]);
+        } else if (args[i] == "--discount-factor" && i + 1 < args.size()) {
+            discount_factor = std::stod(args[++i]);
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -153,6 +157,7 @@ int handle_play(const std::vector<std::string>& args) {
     config.device = device;
     config.temperature = temperature;
     config.post_game_epochs = post_game_epochs;
+    config.discount_factor = discount_factor;
 
     Engine engine(config);
 
@@ -184,6 +189,7 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Games:             " << games << "\n";
     std::cout << "  Temperature:       " << config.temperature << "\n";
     std::cout << "  Post-Game Epochs:  " << config.post_game_epochs << "\n";
+    std::cout << "  Discount Factor:   " << config.discount_factor << "\n";
     std::cout << "  Params:            " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 

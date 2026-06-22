@@ -392,7 +392,17 @@ void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float out
             auto start_f = std::chrono::steady_clock::now();
             std::vector<torch::Tensor> batch_vec(all_tensors.begin() + i, all_tensors.begin() + i + current_batch_size);
             torch::Tensor batch_input = torch::stack(batch_vec).to(device);
-            torch::Tensor batch_target = torch::full({static_cast<long>(current_batch_size), 1}, outcome, torch::dtype(torch::kFloat32).device(device));
+            
+            // Compute discounted targets based on distance to the end of the game
+            std::vector<float> targets_host;
+            targets_host.reserve(current_batch_size);
+            for (size_t j = 0; j < current_batch_size; ++j) {
+                size_t t = (i + j) / 2;
+                size_t moves_to_end = boards.size() - 1 - t;
+                float target_val = 0.5f + (outcome - 0.5f) * std::pow(config.discount_factor, moves_to_end);
+                targets_host.push_back(target_val);
+            }
+            torch::Tensor batch_target = torch::tensor(targets_host, torch::dtype(torch::kFloat32)).unsqueeze(1).to(device);
             
             optimizer->zero_grad();
             torch::Tensor prediction = model->forward(batch_input);
