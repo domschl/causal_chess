@@ -79,8 +79,8 @@ void print_play_help() {
     std::cout << "  --save-dir <path>      Checkpoint directory (default: checkpoints)\n";
     std::cout << "  --save-interval <n>    Save checkpoint every n games (default: 10)\n";
     std::cout << "  --temperature <val>    Exploration temperature for self-play (default: 0.0)\n";
-    std::cout << "  --post-game-epochs <n> Number of epochs for post-game outcome training (default: 20)\n";
-    std::cout << "  --discount-factor <val> Decay factor for post-game outcome training (default: 0.97)\n";
+    std::cout << "  --post-game-epochs <n> Number of epochs for post-game outcome training (default: 2)\n";
+    std::cout << "  --discount-factor <val> Decay factor for post-game outcome training (default: 0.90)\n";
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
 }
@@ -113,8 +113,8 @@ int handle_play(const std::vector<std::string>& args) {
     std::string checkpoint_path = "";
     bool fresh = false;
     double temperature = 0.0;
-    int post_game_epochs = 20;
-    double discount_factor = 0.97;
+    int post_game_epochs = 2;
+    double discount_factor = 0.90;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {

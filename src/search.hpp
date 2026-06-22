@@ -19,8 +19,8 @@ struct SearchConfig {
     std::string device = "cpu"; // "cpu", "mps", "cuda", "auto"
     double grad_clip = 1.0;
     double temperature = 0.0;
-    int post_game_epochs = 20;
-    double discount_factor = 0.97;
+    int post_game_epochs = 2;
+    double discount_factor = 0.90;
 };
 
 class Engine {
