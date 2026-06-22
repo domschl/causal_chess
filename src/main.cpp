@@ -71,16 +71,17 @@ void print_play_human_help() {
 void print_play_help() {
     std::cout << "Usage: causal-chess-cpp play [options]\n\n";
     std::cout << "Options:\n";
-    std::cout << "  --games <n>          Number of self-play games (default: 100)\n";
-    std::cout << "  --depth <n>          Search depth (default: 4)\n";
-    std::cout << "  --top-n <n>          Moves to expand per node (default: 5)\n";
-    std::cout << "  --lr <val>           Learning rate (default: 1e-4)\n";
-    std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
-    std::cout << "  --save-dir <path>    Checkpoint directory (default: checkpoints)\n";
-    std::cout << "  --save-interval <n>  Save checkpoint every n games (default: 10)\n";
-    std::cout << "  --temperature <val>  Exploration temperature for self-play (default: 0.0)\n";
-    std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
-    std::cout << "  --fresh              Ignore existing checkpoints and start fresh\n";
+    std::cout << "  --games <n>            Number of self-play games (default: 100)\n";
+    std::cout << "  --depth <n>            Search depth (default: 4)\n";
+    std::cout << "  --top-n <n>            Moves to expand per node (default: 5)\n";
+    std::cout << "  --lr <val>             Learning rate (default: 1e-4)\n";
+    std::cout << "  --device <str>         Torch device: cpu, mps, cuda, auto (default: cpu)\n";
+    std::cout << "  --save-dir <path>      Checkpoint directory (default: checkpoints)\n";
+    std::cout << "  --save-interval <n>    Save checkpoint every n games (default: 10)\n";
+    std::cout << "  --temperature <val>    Exploration temperature for self-play (default: 0.0)\n";
+    std::cout << "  --post-game-epochs <n> Number of epochs for post-game outcome training (default: 20)\n";
+    std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
+    std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
 }
 
 void print_eval_help() {
@@ -111,6 +112,7 @@ int handle_play(const std::vector<std::string>& args) {
     std::string checkpoint_path = "";
     bool fresh = false;
     double temperature = 0.0;
+    int post_game_epochs = 20;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -136,6 +138,8 @@ int handle_play(const std::vector<std::string>& args) {
             fresh = true;
         } else if (args[i] == "--temperature" && i + 1 < args.size()) {
             temperature = std::stod(args[++i]);
+        } else if (args[i] == "--post-game-epochs" && i + 1 < args.size()) {
+            post_game_epochs = std::stoi(args[++i]);
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -148,6 +152,7 @@ int handle_play(const std::vector<std::string>& args) {
     config.learning_rate = lr;
     config.device = device;
     config.temperature = temperature;
+    config.post_game_epochs = post_game_epochs;
 
     Engine engine(config);
 
@@ -172,13 +177,14 @@ int handle_play(const std::vector<std::string>& args) {
 
     std::cout << "============================================================\n";
     std::cout << "Causal Chess (C++) — Self-Play Training\n";
-    std::cout << "  Depth:       " << config.max_depth << "\n";
-    std::cout << "  Top-N:       " << config.top_n << "\n";
-    std::cout << "  LR:          " << config.learning_rate << "\n";
-    std::cout << "  Device:      " << engine.get_device() << "\n";
-    std::cout << "  Games:       " << games << "\n";
-    std::cout << "  Temperature: " << config.temperature << "\n";
-    std::cout << "  Params:      " << engine.get_model()->param_count() << "\n";
+    std::cout << "  Depth:             " << config.max_depth << "\n";
+    std::cout << "  Top-N:             " << config.top_n << "\n";
+    std::cout << "  LR:                " << config.learning_rate << "\n";
+    std::cout << "  Device:            " << engine.get_device() << "\n";
+    std::cout << "  Games:             " << games << "\n";
+    std::cout << "  Temperature:       " << config.temperature << "\n";
+    std::cout << "  Post-Game Epochs:  " << config.post_game_epochs << "\n";
+    std::cout << "  Params:            " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
     self_play_loop(engine, games, save_dir, save_interval, true, !fresh);

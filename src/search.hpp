@@ -19,6 +19,7 @@ struct SearchConfig {
     std::string device = "cpu"; // "cpu", "mps", "cuda", "auto"
     double grad_clip = 1.0;
     double temperature = 0.0;
+    int post_game_epochs = 20;
 };
 
 class Engine {
@@ -50,6 +51,9 @@ public:
     double get_forward_time_secs() const;
     double get_backprop_time_secs() const;
     double get_total_search_time_secs() const;
+
+    // Post-game outcome training pass
+    void train_on_outcome(const std::vector<chess::Board>& boards, float outcome);
 
     // Checkpoint management
     void save_checkpoint(const std::string& path);

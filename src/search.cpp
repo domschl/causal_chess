@@ -363,6 +363,54 @@ void Engine::reset_stats() {
     total_search_time_secs = 0.0;
 }
 
+void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float outcome) {
+    if (boards.empty()) return;
+
+    // Mini-batch size of 16 board pairs (32 boards total after symmetry)
+    const size_t batch_size = 16;
+    
+    std::vector<torch::Tensor> all_tensors;
+    all_tensors.reserve(boards.size() * 2);
+    for (const auto& board : boards) {
+        torch::Tensor orig = board_to_tensor(board);
+        torch::Tensor mirrored = torch::flip(orig, {2}).clone();
+        all_tensors.push_back(orig);
+        all_tensors.push_back(mirrored);
+    }
+
+    model->train();
+    for (int epoch = 0; epoch < config.post_game_epochs; ++epoch) {
+        for (size_t i = 0; i < all_tensors.size(); i += batch_size * 2) {
+            size_t current_batch_size = std::min(batch_size * 2, all_tensors.size() - i);
+            
+            auto start_f = std::chrono::steady_clock::now();
+            std::vector<torch::Tensor> batch_vec(all_tensors.begin() + i, all_tensors.begin() + i + current_batch_size);
+            torch::Tensor batch_input = torch::stack(batch_vec).to(device);
+            torch::Tensor batch_target = torch::full({static_cast<long>(current_batch_size), 1}, outcome, torch::dtype(torch::kFloat32).device(device));
+            
+            optimizer->zero_grad();
+            torch::Tensor prediction = model->forward(batch_input);
+            auto end_f = std::chrono::steady_clock::now();
+            std::chrono::duration<double> elapsed_f = end_f - start_f;
+            forward_time_secs += elapsed_f.count();
+
+            auto start_b = std::chrono::steady_clock::now();
+            torch::Tensor loss = torch::nn::functional::mse_loss(prediction, batch_target);
+            loss.backward();
+            
+            torch::nn::utils::clip_grad_norm_(model->parameters(), config.grad_clip);
+            optimizer->step();
+            auto end_b = std::chrono::steady_clock::now();
+            std::chrono::duration<double> elapsed_b = end_b - start_b;
+            backprop_time_secs += elapsed_b.count();
+            
+            total_loss += loss.item<double>();
+            update_count++;
+        }
+    }
+    model->eval();
+}
+
 void Engine::save_checkpoint(const std::string& path) {
     // libtorch serialize uses torch::save
     torch::save(model, path);

@@ -66,10 +66,12 @@ PlayStats self_play_loop(
         chess::Board board;
         std::vector<std::string> moves_san;
         std::vector<float> move_evals;
+        std::vector<chess::Board> visited_boards;
         int move_count = 0;
 
         // Play game until termination
         while (board.isGameOver().first == chess::GameResultReason::NONE) {
+            visited_boards.push_back(board);
             auto [best_move, value] = engine.search_position(board);
 
             // Record SAN string before making move
@@ -116,6 +118,15 @@ PlayStats self_play_loop(
                 stats.draws++;
             }
         }
+
+        // Post-game training pass: Map result to target value (White-relative)
+        float outcome_val = 0.5f;
+        if (result == "1-0") {
+            outcome_val = 1.0f;
+        } else if (result == "0-1") {
+            outcome_val = 0.0f;
+        }
+        engine.train_on_outcome(visited_boards, outcome_val);
 
         auto game_end = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = game_end - game_start;
