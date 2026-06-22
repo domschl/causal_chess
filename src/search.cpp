@@ -244,13 +244,17 @@ std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& bo
 
 void Engine::_td_update(const chess::Board& board, float target_value) {
     auto start_f = std::chrono::steady_clock::now();
-    torch::Tensor tensor = board_to_tensor(board).unsqueeze(0).to(device);
-    torch::Tensor target = torch::tensor({{target_value}}, torch::dtype(torch::kFloat32).device(device));
+    torch::Tensor orig_tensor = board_to_tensor(board);
+    // Flip along files dimension (dim 2) for horizontal symmetry
+    torch::Tensor mirrored_tensor = torch::flip(orig_tensor, {2});
+
+    torch::Tensor batch = torch::stack({orig_tensor, mirrored_tensor}).to(device);
+    torch::Tensor target = torch::tensor({{target_value}, {target_value}}, torch::dtype(torch::kFloat32).device(device));
 
     model->train();
     optimizer->zero_grad();
 
-    torch::Tensor prediction = model->forward(tensor);
+    torch::Tensor prediction = model->forward(batch);
     auto end_f = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed_f = end_f - start_f;
     forward_time_secs += elapsed_f.count();

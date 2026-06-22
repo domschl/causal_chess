@@ -312,20 +312,25 @@ class Engine:
     def _td_update(self, board: chess.Board, target_value: float) -> None:
         """Perform a single TD(0) gradient step.
 
-        Trains V(board) toward ``target_value`` using MSE loss.
-        The target is detached (no gradient flows through it).
+        Trains V(board) and its horizontally mirrored position toward
+        ``target_value`` using MSE loss. The target is detached (no gradient
+        flows through it).
 
         Args:
             board: Position whose evaluation is being updated.
             target_value: Minimax-backed White-relative value (fixed target).
         """
-        tensor = board_to_tensor(board).unsqueeze(0).to(self.device)
+        orig_tensor = board_to_tensor(board)
+        # Flip along files dimension (dim 2) for horizontal symmetry
+        mirrored_tensor = torch.flip(orig_tensor, dims=[2])
+
+        batch = torch.stack([orig_tensor, mirrored_tensor]).to(self.device)
         target = torch.tensor(
-            [[target_value]], dtype=torch.float32, device=self.device
+            [[target_value], [target_value]], dtype=torch.float32, device=self.device
         )
 
         self.model.train()
-        prediction = self.model(tensor)
+        prediction = self.model(batch)
         loss = F.mse_loss(prediction, target)
 
         self.optimizer.zero_grad()

@@ -210,6 +210,36 @@ void test_temperature_exploration() {
     std::cout << "PASSED\n";
 }
 
+void test_tensor_symmetry() {
+    std::cout << "Running: test_tensor_symmetry... ";
+
+    chess::Board board;
+    torch::Tensor orig = board_to_tensor(board);
+    torch::Tensor mirrored = torch::flip(orig, {2});
+
+    assert(torch::allclose(orig[0], mirrored[0]));
+
+    // Let's make a move to make the board asymmetric, e.g. e4
+    board.makeMove(chess::Move::make(chess::Square("e2"), chess::Square("e4")));
+    orig = board_to_tensor(board);
+    mirrored = torch::flip(orig, {2});
+
+    float* orig_data = orig.data_ptr<float>();
+    float* mirrored_data = mirrored.data_ptr<float>();
+
+    // orig White pawn is at plane 0, rank 3, file 4.
+    // Index: plane_idx * 64 + rank * 8 + file = 0 * 64 + 3 * 8 + 4 = 28.
+    assert(orig_data[28] == 1.0f);
+    assert(orig_data[3 * 8 + 3] == 0.0f);
+
+    // mirrored White pawn should be at file 3, rank 3.
+    // Index: 0 * 64 + 3 * 8 + 3 = 27.
+    assert(mirrored_data[27] == 1.0f);
+    assert(mirrored_data[28] == 0.0f);
+
+    std::cout << "PASSED\n";
+}
+
 int main() {
     std::cout << "============================================================\n";
     std::cout << "Starting C++ Causal Chess Unit Tests\n";
@@ -222,6 +252,7 @@ int main() {
         test_td_learning_weight_changes();
         test_checkpoint_roundtrip();
         test_temperature_exploration();
+        test_tensor_symmetry();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";

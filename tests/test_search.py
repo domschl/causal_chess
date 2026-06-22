@@ -116,6 +116,30 @@ class TestSearchPosition:
             
         assert len(moves) > 1, f"Expected multiple moves, got {moves}"
 
+    def test_tensor_symmetry(self) -> None:
+        """Verify that horizontal mirroring of the board tensor works as expected."""
+        from causal_chess.encoding import board_to_tensor
+        board = chess.Board()
+        orig = board_to_tensor(board)
+        mirrored = torch.flip(orig, dims=[2])
+        
+        # In the starting position, White pawns are at rank 1 (index 1), all files.
+        # Mirroring horizontally should keep pawns at rank 1, all files.
+        assert torch.allclose(orig[0], mirrored[0])
+        
+        # Let's make a move to make the board asymmetric, e.g. e4
+        board.push_san("e4")
+        orig = board_to_tensor(board)
+        mirrored = torch.flip(orig, dims=[2])
+        
+        # In e4, White pawn is at e4 (file 4, rank 3).
+        # In mirrored, it should be at d4 (file 3, rank 3).
+        assert orig[0, 3, 4] == 1.0
+        assert orig[0, 3, 3] == 0.0
+        assert mirrored[0, 3, 3] == 1.0
+        assert mirrored[0, 3, 4] == 0.0
+
+
 
 class TestEvaluate:
     """Test the single-position evaluation."""
