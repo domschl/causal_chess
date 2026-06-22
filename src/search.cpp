@@ -4,6 +4,8 @@
 #include <random>
 #include <cmath>
 #include <cstdio>
+#include <numeric>
+#include <algorithm>
 
 namespace causal_chess {
 
@@ -372,37 +374,65 @@ void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float out
     if (boards.empty()) return;
     auto train_start = std::chrono::steady_clock::now();
 
-    // Mini-batch size of 16 board pairs (32 boards total after symmetry)
-    const size_t batch_size = 16;
-    
-    std::vector<torch::Tensor> all_tensors;
-    all_tensors.reserve(boards.size() * 2);
-    for (const auto& board : boards) {
-        torch::Tensor orig = board_to_tensor(board);
-        torch::Tensor mirrored = torch::flip(orig, {2}).clone();
-        all_tensors.push_back(orig);
-        all_tensors.push_back(mirrored);
+    // 1. Add all positions from the current game to the replay buffer with their discounted targets
+    for (size_t t = 0; t < boards.size(); ++t) {
+        size_t moves_to_end = boards.size() - 1 - t;
+        float target_val = 0.5f + (outcome - 0.5f) * std::pow(config.discount_factor, moves_to_end);
+        replay_buffer.push_back({boards[t], target_val});
     }
 
+    // 2. Enforce replay buffer size limit (FIFO)
+    while (replay_buffer.size() > static_cast<size_t>(config.replay_buffer_size)) {
+        replay_buffer.pop_front();
+    }
+
+    // 3. Sample a random batch of samples from the replay buffer
+    size_t batch_size = std::min(replay_buffer.size(), static_cast<size_t>(config.replay_batch_size));
+    if (batch_size == 0) return;
+
+    std::vector<ReplaySample> sampled_batch;
+    sampled_batch.reserve(batch_size);
+
+    static std::mt19937 gen(std::random_device{}());
+    std::vector<size_t> indices(replay_buffer.size());
+    std::iota(indices.begin(), indices.end(), 0);
+    std::shuffle(indices.begin(), indices.end(), gen);
+
+    for (size_t i = 0; i < batch_size; ++i) {
+        sampled_batch.push_back(replay_buffer[indices[i]]);
+    }
+
+    // 4. Prepare tensors (including mirrored versions) for training
+    std::vector<torch::Tensor> all_tensors;
+    std::vector<float> targets_host;
+    all_tensors.reserve(batch_size * 2);
+    targets_host.reserve(batch_size * 2);
+
+    for (const auto& sample : sampled_batch) {
+        torch::Tensor orig = board_to_tensor(sample.board);
+        torch::Tensor mirrored = torch::flip(orig, {2}).clone();
+        
+        all_tensors.push_back(orig);
+        all_tensors.push_back(mirrored);
+        
+        targets_host.push_back(sample.target);
+        targets_host.push_back(sample.target);
+    }
+
+    // 5. Run gradient steps on the sampled batch in mini-batches of size 16 (32 boards total after symmetry)
     model->train();
+    const size_t mini_batch_size = 16;
+
     for (int epoch = 0; epoch < config.post_game_epochs; ++epoch) {
-        for (size_t i = 0; i < all_tensors.size(); i += batch_size * 2) {
-            size_t current_batch_size = std::min(batch_size * 2, all_tensors.size() - i);
+        for (size_t i = 0; i < all_tensors.size(); i += mini_batch_size * 2) {
+            size_t current_batch_size = std::min(mini_batch_size * 2, all_tensors.size() - i);
             
             auto start_f = std::chrono::steady_clock::now();
             std::vector<torch::Tensor> batch_vec(all_tensors.begin() + i, all_tensors.begin() + i + current_batch_size);
             torch::Tensor batch_input = torch::stack(batch_vec).to(device);
             
-            // Compute discounted targets based on distance to the end of the game
-            std::vector<float> targets_host;
-            targets_host.reserve(current_batch_size);
-            for (size_t j = 0; j < current_batch_size; ++j) {
-                size_t t = (i + j) / 2;
-                size_t moves_to_end = boards.size() - 1 - t;
-                float target_val = 0.5f + (outcome - 0.5f) * std::pow(config.discount_factor, moves_to_end);
-                targets_host.push_back(target_val);
-            }
-            torch::Tensor batch_target = torch::tensor(targets_host, torch::dtype(torch::kFloat32)).unsqueeze(1).to(device);
+            std::vector<float> batch_targets_host(targets_host.begin() + i, targets_host.begin() + i + current_batch_size);
+            torch::Tensor batch_target = torch::tensor(batch_targets_host, torch::dtype(torch::kFloat32)).unsqueeze(1).to(device);
             
             optimizer->zero_grad();
             torch::Tensor prediction = model->forward(batch_input);

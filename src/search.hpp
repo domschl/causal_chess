@@ -6,6 +6,7 @@
 #include <utility>
 #include <optional>
 #include <memory>
+#include <deque>
 #include <torch/torch.h>
 #include "chess.hpp"
 #include "model.hpp"
@@ -20,7 +21,9 @@ struct SearchConfig {
     double grad_clip = 1.0;
     double temperature = 0.0;
     int post_game_epochs = 2;
-    double discount_factor = 0.90;
+    double discount_factor = 0.97;
+    int replay_buffer_size = 5000;
+    int replay_batch_size = 128;
 };
 
 class Engine {
@@ -75,6 +78,12 @@ private:
     torch::Device device;
     ValueNetwork model;
     std::unique_ptr<torch::optim::Adam> optimizer;
+
+    struct ReplaySample {
+        chess::Board board;
+        float target;
+    };
+    std::deque<ReplaySample> replay_buffer;
 
     double total_loss = 0.0;
     int update_count = 0;

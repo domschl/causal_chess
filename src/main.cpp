@@ -80,7 +80,9 @@ void print_play_help() {
     std::cout << "  --save-interval <n>    Save checkpoint every n games (default: 10)\n";
     std::cout << "  --temperature <val>    Exploration temperature for self-play (default: 0.0)\n";
     std::cout << "  --post-game-epochs <n> Number of epochs for post-game outcome training (default: 2)\n";
-    std::cout << "  --discount-factor <val> Decay factor for post-game outcome training (default: 0.90)\n";
+    std::cout << "  --discount-factor <val> Decay factor for post-game outcome training (default: 0.97)\n";
+    std::cout << "  --replay-buffer-size <n> Max size of replay buffer (default: 5000)\n";
+    std::cout << "  --replay-batch-size <n> Mini-batch size sampled from replay buffer (default: 128)\n";
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
 }
@@ -114,7 +116,9 @@ int handle_play(const std::vector<std::string>& args) {
     bool fresh = false;
     double temperature = 0.0;
     int post_game_epochs = 2;
-    double discount_factor = 0.90;
+    double discount_factor = 0.97;
+    int replay_buffer_size = 5000;
+    int replay_batch_size = 128;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -144,6 +148,10 @@ int handle_play(const std::vector<std::string>& args) {
             post_game_epochs = std::stoi(args[++i]);
         } else if (args[i] == "--discount-factor" && i + 1 < args.size()) {
             discount_factor = std::stod(args[++i]);
+        } else if (args[i] == "--replay-buffer-size" && i + 1 < args.size()) {
+            replay_buffer_size = std::stoi(args[++i]);
+        } else if (args[i] == "--replay-batch-size" && i + 1 < args.size()) {
+            replay_batch_size = std::stoi(args[++i]);
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -158,6 +166,8 @@ int handle_play(const std::vector<std::string>& args) {
     config.temperature = temperature;
     config.post_game_epochs = post_game_epochs;
     config.discount_factor = discount_factor;
+    config.replay_buffer_size = replay_buffer_size;
+    config.replay_batch_size = replay_batch_size;
 
     Engine engine(config);
 
@@ -182,15 +192,17 @@ int handle_play(const std::vector<std::string>& args) {
 
     std::cout << "============================================================\n";
     std::cout << "Causal Chess (C++) — Self-Play Training\n";
-    std::cout << "  Depth:             " << config.max_depth << "\n";
-    std::cout << "  Top-N:             " << config.top_n << "\n";
-    std::cout << "  LR:                " << config.learning_rate << "\n";
-    std::cout << "  Device:            " << engine.get_device() << "\n";
-    std::cout << "  Games:             " << games << "\n";
-    std::cout << "  Temperature:       " << config.temperature << "\n";
-    std::cout << "  Post-Game Epochs:  " << config.post_game_epochs << "\n";
-    std::cout << "  Discount Factor:   " << config.discount_factor << "\n";
-    std::cout << "  Params:            " << engine.get_model()->param_count() << "\n";
+    std::cout << "  Depth:               " << config.max_depth << "\n";
+    std::cout << "  Top-N:               " << config.top_n << "\n";
+    std::cout << "  LR:                  " << config.learning_rate << "\n";
+    std::cout << "  Device:              " << engine.get_device() << "\n";
+    std::cout << "  Games:               " << games << "\n";
+    std::cout << "  Temperature:         " << config.temperature << "\n";
+    std::cout << "  Post-Game Epochs:    " << config.post_game_epochs << "\n";
+    std::cout << "  Discount Factor:     " << config.discount_factor << "\n";
+    std::cout << "  Replay Buffer Size:  " << config.replay_buffer_size << "\n";
+    std::cout << "  Replay Batch Size:   " << config.replay_batch_size << "\n";
+    std::cout << "  Params:              " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
     self_play_loop(engine, games, save_dir, save_interval, true, !fresh);
