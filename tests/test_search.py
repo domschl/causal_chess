@@ -102,6 +102,20 @@ class TestSearchPosition:
 
         assert engine.update_count > 0, "No TD updates were performed"
 
+    def test_temperature_exploration(self) -> None:
+        """With high temperature, search_position should return different moves."""
+        config = SearchConfig(max_depth=1, top_n=5, device="cpu", temperature=10.0)
+        engine = Engine(config=config)
+        board = chess.Board()
+        
+        # Run search multiple times and verify we don't always get the same move
+        moves = set()
+        for _ in range(50):
+            move, _ = engine.search_position(board)
+            moves.add(move)
+            
+        assert len(moves) > 1, f"Expected multiple moves, got {moves}"
+
 
 class TestEvaluate:
     """Test the single-position evaluation."""

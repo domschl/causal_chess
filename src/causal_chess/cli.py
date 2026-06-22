@@ -52,6 +52,9 @@ def main(argv: list[str] | None = None) -> None:
     play_parser.add_argument(
         "--fresh", action="store_true", help="Ignore existing checkpoints and start from scratch"
     )
+    play_parser.add_argument(
+        "--temperature", type=float, default=0.0, help="Exploration temperature for self-play (default: 0.0)"
+    )
 
     # ---- eval ----
     eval_parser = subparsers.add_parser("eval", help="Evaluate a FEN position")
@@ -136,6 +139,7 @@ def _cmd_play(args: argparse.Namespace) -> None:
         top_n=args.top_n,
         learning_rate=args.lr,
         device=args.device,
+        temperature=args.temperature,
     )
     engine = Engine(config=config)
 
@@ -157,12 +161,13 @@ def _cmd_play(args: argparse.Namespace) -> None:
 
     print("=" * 60)
     print("Causal Chess — Self-Play Training")
-    print(f"  Depth:     {config.max_depth}")
-    print(f"  Top-N:     {config.top_n}")
-    print(f"  LR:        {config.learning_rate}")
-    print(f"  Device:    {config.device}")
-    print(f"  Games:     {args.games}")
-    print(f"  Params:    {engine.model.param_count():,}")
+    print(f"  Depth:       {config.max_depth}")
+    print(f"  Top-N:       {config.top_n}")
+    print(f"  LR:          {config.learning_rate}")
+    print(f"  Device:      {config.device}")
+    print(f"  Games:       {args.games}")
+    print(f"  Temperature: {config.temperature}")
+    print(f"  Params:      {engine.model.param_count():,}")
     print("=" * 60)
 
     self_play_loop(

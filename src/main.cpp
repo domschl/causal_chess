@@ -79,6 +79,7 @@ void print_play_help() {
     std::cout << "  --save-dir <path>    Checkpoint directory (default: checkpoints)\n";
     std::cout << "  --save-interval <n>  Save checkpoint every n games (default: 10)\n";
     std::cout << "  --max-moves <n>      Max moves per game (default: 200)\n";
+    std::cout << "  --temperature <val>  Exploration temperature for self-play (default: 0.0)\n";
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --fresh              Ignore existing checkpoints and start fresh\n";
 }
@@ -111,6 +112,7 @@ int handle_play(const std::vector<std::string>& args) {
     int max_moves = 200;
     std::string checkpoint_path = "";
     bool fresh = false;
+    double temperature = 0.0;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -136,6 +138,8 @@ int handle_play(const std::vector<std::string>& args) {
             checkpoint_path = args[++i];
         } else if (args[i] == "--fresh") {
             fresh = true;
+        } else if (args[i] == "--temperature" && i + 1 < args.size()) {
+            temperature = std::stod(args[++i]);
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -147,6 +151,7 @@ int handle_play(const std::vector<std::string>& args) {
     config.top_n = top_n;
     config.learning_rate = lr;
     config.device = device;
+    config.temperature = temperature;
 
     Engine engine(config);
 
@@ -171,12 +176,13 @@ int handle_play(const std::vector<std::string>& args) {
 
     std::cout << "============================================================\n";
     std::cout << "Causal Chess (C++) — Self-Play Training\n";
-    std::cout << "  Depth:     " << config.max_depth << "\n";
-    std::cout << "  Top-N:     " << config.top_n << "\n";
-    std::cout << "  LR:        " << config.learning_rate << "\n";
-    std::cout << "  Device:    " << engine.get_device() << "\n";
-    std::cout << "  Games:     " << games << "\n";
-    std::cout << "  Params:    " << engine.get_model()->param_count() << "\n";
+    std::cout << "  Depth:       " << config.max_depth << "\n";
+    std::cout << "  Top-N:       " << config.top_n << "\n";
+    std::cout << "  LR:          " << config.learning_rate << "\n";
+    std::cout << "  Device:      " << engine.get_device() << "\n";
+    std::cout << "  Games:       " << games << "\n";
+    std::cout << "  Temperature: " << config.temperature << "\n";
+    std::cout << "  Params:      " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
     self_play_loop(engine, games, save_dir, save_interval, max_moves, true, !fresh);

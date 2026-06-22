@@ -1,6 +1,8 @@
 #include "search.hpp"
 #include "encoding.hpp"
 #include <iostream>
+#include <random>
+#include <cmath>
 
 namespace causal_chess {
 
@@ -44,7 +46,7 @@ Engine::Engine(const SearchConfig& config, ValueNetwork model)
     );
 }
 
-std::pair<chess::Move, float> Engine::search_position(chess::Board& board) {
+std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::optional<double> temperature) {
     auto start = std::chrono::steady_clock::now();
     chess::Movelist moves;
     chess::movegen::legalmoves(moves, board);
@@ -72,23 +74,62 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board) {
     std::vector<std::pair<chess::Move, float>> top_moves(move_scores.begin(), move_scores.begin() + keep);
 
     // 4. Search recursively
-    chess::Move best_move = top_moves[0].first;
-    float best_value = is_white ? -1.0f : 2.0f; // infinity approximations
+    std::vector<std::pair<chess::Move, float>> searched_moves;
+    searched_moves.reserve(top_moves.size());
 
     for (const auto& ms : top_moves) {
         board.makeMove(ms.first);
         float val = _search(board, config.max_depth - 1);
         board.unmakeMove(ms.first);
+        searched_moves.emplace_back(ms.first, val);
+    }
 
-        if (is_white) {
-            if (val > best_value) {
-                best_value = val;
-                best_move = ms.first;
+    double temp = temperature.value_or(config.temperature);
+
+    chess::Move best_move;
+    float best_value;
+
+    if (temp > 0.0) {
+        // Temperature-based softmax sampling
+        std::vector<double> exp_logits;
+        exp_logits.reserve(searched_moves.size());
+
+        double max_score = -9999.0;
+        for (const auto& sm : searched_moves) {
+            double score = is_white ? sm.second : 1.0 - sm.second;
+            if (score > max_score) {
+                max_score = score;
             }
-        } else {
-            if (val < best_value) {
-                best_value = val;
-                best_move = ms.first;
+        }
+
+        for (const auto& sm : searched_moves) {
+            double score = is_white ? sm.second : 1.0 - sm.second;
+            exp_logits.push_back(std::exp((score - max_score) / temp));
+        }
+
+        static std::mt19937 gen(std::random_device{}());
+        std::discrete_distribution<> dist(exp_logits.begin(), exp_logits.end());
+        int chosen_idx = dist(gen);
+
+        best_move = searched_moves[chosen_idx].first;
+        best_value = searched_moves[chosen_idx].second;
+    } else {
+        // Greedy choice
+        best_move = searched_moves[0].first;
+        best_value = searched_moves[0].second;
+
+        for (size_t i = 1; i < searched_moves.size(); ++i) {
+            float val = searched_moves[i].second;
+            if (is_white) {
+                if (val > best_value) {
+                    best_value = val;
+                    best_move = searched_moves[i].first;
+                }
+            } else {
+                if (val < best_value) {
+                    best_value = val;
+                    best_move = searched_moves[i].first;
+                }
             }
         }
     }

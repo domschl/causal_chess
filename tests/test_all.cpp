@@ -185,6 +185,31 @@ void test_checkpoint_roundtrip() {
     std::cout << "PASSED\n";
 }
 
+void test_temperature_exploration() {
+    std::cout << "Running: test_temperature_exploration... ";
+
+    SearchConfig config;
+    config.max_depth = 1;
+    config.top_n = 5;
+    config.device = "cpu";
+    config.temperature = 10.0;
+
+    Engine engine(config);
+    chess::Board board;
+
+    std::vector<chess::Move> moves;
+    for (int i = 0; i < 50; ++i) {
+        auto [move, val] = engine.search_position(board);
+        if (std::find(moves.begin(), moves.end(), move) == moves.end()) {
+            moves.push_back(move);
+        }
+    }
+
+    assert(moves.size() > 1);
+
+    std::cout << "PASSED\n";
+}
+
 int main() {
     std::cout << "============================================================\n";
     std::cout << "Starting C++ Causal Chess Unit Tests\n";
@@ -196,6 +221,7 @@ int main() {
         test_search_depth_1();
         test_td_learning_weight_changes();
         test_checkpoint_roundtrip();
+        test_temperature_exploration();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";

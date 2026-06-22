@@ -18,6 +18,7 @@ struct SearchConfig {
     double learning_rate = 1e-4;
     std::string device = "cpu"; // "cpu", "mps", "cuda", "auto"
     double grad_clip = 1.0;
+    double temperature = 0.0;
 };
 
 class Engine {
@@ -30,7 +31,7 @@ public:
      * @param board The chess board (modified temporarily but restored before returning).
      * @return A pair of (best_move, evaluation).
      */
-    std::pair<chess::Move, float> search_position(chess::Board& board);
+    std::pair<chess::Move, float> search_position(chess::Board& board, std::optional<double> temperature = std::nullopt);
 
     /**
      * @brief Evaluate a board state statically (inference only, no gradients, no updates).

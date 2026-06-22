@@ -15,7 +15,9 @@ Scores are White-relative throughout: V(s) ∈ [0, 1] where
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
+import random
 
 import chess
 import torch
@@ -43,6 +45,9 @@ class SearchConfig:
 
     grad_clip: float = 1.0
     """Maximum gradient norm for clipping (stability)."""
+
+    temperature: float = 0.0
+    """Exploration temperature for move selection at the root."""
 
 
 class Engine:
@@ -81,7 +86,9 @@ class Engine:
     # Public API
     # ------------------------------------------------------------------
 
-    def search_position(self, board: chess.Board) -> tuple[chess.Move, float]:
+    def search_position(
+        self, board: chess.Board, temperature: float | None = None
+    ) -> tuple[chess.Move, float]:
         """Find the best move for the current position.
 
         Runs a selective tree search of depth ``config.max_depth``,
@@ -89,6 +96,7 @@ class Engine:
 
         Args:
             board: Current board position (not modified).
+            temperature: Optional override for exploration temperature.
 
         Returns:
             A tuple of (best_move, value) where *value* is the
@@ -111,25 +119,35 @@ class Engine:
         top_moves = move_scores[: self.config.top_n]
 
         # Search each top move
-        best_move: chess.Move = top_moves[0][0]
-        best_value: float | None = None
-
+        searched_moves: list[tuple[chess.Move, float]] = []
         for move, _ in top_moves:
             board.push(move)
             v = self._search(board, self.config.max_depth - 1)
             board.pop()
+            searched_moves.append((move, v))
 
-            if best_value is None:
-                best_value = v
-                best_move = move
-            elif is_white and v > best_value:
-                best_value = v
-                best_move = move
-            elif not is_white and v < best_value:
-                best_value = v
-                best_move = move
+        # Use temperature if specified or configured
+        temp = temperature if temperature is not None else self.config.temperature
 
-        assert best_value is not None
+        if temp > 0.0:
+            scores = [v if is_white else 1.0 - v for _, v in searched_moves]
+            max_score = max(scores)
+            logits = [(s - max_score) / temp for s in scores]
+            exp_logits = [math.exp(l) for l in logits]
+            sum_exp = sum(exp_logits)
+            probs = [e / sum_exp for e in exp_logits]
+            
+            chosen_idx = random.choices(range(len(searched_moves)), weights=probs, k=1)[0]
+            best_move, best_value = searched_moves[chosen_idx]
+        else:
+            best_move, best_value = searched_moves[0]
+            for move, v in searched_moves[1:]:
+                if is_white and v > best_value:
+                    best_value = v
+                    best_move = move
+                elif not is_white and v < best_value:
+                    best_value = v
+                    best_move = move
 
         # TD update at root position
         self._td_update(board, best_value)
