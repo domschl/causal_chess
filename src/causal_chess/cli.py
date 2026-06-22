@@ -273,7 +273,7 @@ def _cmd_move(args: argparse.Namespace) -> None:
         engine.load_checkpoint(args.checkpoint)
 
     board = chess.Board(args.fen)
-    move, value = engine.search_position(board)
+    move, value = engine.search_position(board, verbose=True)
 
     print(f"FEN:   {args.fen}")
     print(f"Move:  {board.san(move)}  ({move.uci()})")

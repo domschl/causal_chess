@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <cmath>
+#include <cstdio>
 
 namespace causal_chess {
 
@@ -133,6 +134,8 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
             }
         }
     }
+
+
 
     // 5. Root TD update
     _td_update(board, best_value);

@@ -66,6 +66,7 @@ PlayStats self_play_loop(
 
         chess::Board board;
         std::vector<std::string> moves_san;
+        std::vector<float> move_evals;
         int move_count = 0;
 
         // Play game until termination or max moves
@@ -75,6 +76,7 @@ PlayStats self_play_loop(
             // Record SAN string before making move
             std::string san = chess::uci::moveToSan(board, best_move);
             moves_san.push_back(san);
+            move_evals.push_back(value);
 
             board.makeMove(best_move);
             move_count++;
@@ -170,10 +172,14 @@ PlayStats self_play_loop(
             std::cout << "[Result \"" << result << "\"]\n\n";
 
             for (size_t i = 0; i < moves_san.size(); ++i) {
+                double pseudo_cp = (move_evals[i] - 0.5) * 20.0;
+                char cp_buf[32];
+                std::snprintf(cp_buf, sizeof(cp_buf), "(%+.2f)", pseudo_cp);
+
                 if (i % 2 == 0) {
-                    std::cout << (i / 2 + 1) << ". " << moves_san[i] << " ";
+                    std::cout << (i / 2 + 1) << ". " << moves_san[i] << " " << cp_buf << " ";
                 } else {
-                    std::cout << moves_san[i] << " ";
+                    std::cout << moves_san[i] << " " << cp_buf << " ";
                 }
             }
             std::cout << result << "\n\n";

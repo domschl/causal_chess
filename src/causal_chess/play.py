@@ -110,6 +110,9 @@ def self_play_loop(
                 best_move, value = engine.search_position(board)
                 board.push(best_move)
                 node = node.add_variation(best_move)
+                # Linearize 0..1 score to pseudo-centipawn score: (value - 0.5) * 20.0
+                pseudo_cp = (value - 0.5) * 20.0
+                node.comment = f"{pseudo_cp:+.2f}"
                 move_count += 1
 
             # Determine result
@@ -198,9 +201,12 @@ def play_single_game(engine: Engine, max_moves: int = 200) -> chess.pgn.Game:
     while not board.is_game_over(claim_draw=True):
         if move_count >= max_moves:
             break
-        best_move, _ = engine.search_position(board)
+        best_move, value = engine.search_position(board)
         board.push(best_move)
         node = node.add_variation(best_move)
+        # Linearize 0..1 score to pseudo-centipawn score: (value - 0.5) * 20.0
+        pseudo_cp = (value - 0.5) * 20.0
+        node.comment = f"{pseudo_cp:+.2f}"
         move_count += 1
 
     if board.is_game_over(claim_draw=True):
@@ -244,5 +250,7 @@ def _print_game_summary(
 
 def _game_to_pgn(game: chess.pgn.Game) -> str:
     """Serialise a game to a PGN string."""
-    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
-    return game.accept(exporter)
+    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
+    pgn_str = game.accept(exporter)
+    # Replace PGN brace comments with parentheses: {+0.20} -> (+0.20)
+    return pgn_str.replace("{", "(").replace("}", ")")
