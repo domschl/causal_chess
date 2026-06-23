@@ -66,6 +66,7 @@ void print_play_human_help() {
     std::cout << "  --color <str>        Your color: white, black (default: white)\n";
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
+    std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.2)\n";
 }
 
 void print_play_help() {
@@ -85,6 +86,7 @@ void print_play_help() {
     std::cout << "  --replay-batch-size <n> Mini-batch size sampled from replay buffer (default: 128)\n";
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
+    std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.2)\n";
 }
 
 void print_eval_help() {
@@ -119,6 +121,7 @@ int handle_play(const std::vector<std::string>& args) {
     double discount_factor = 0.97;
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
+    double heuristic_weight = 0.2;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -152,6 +155,8 @@ int handle_play(const std::vector<std::string>& args) {
             replay_buffer_size = std::stoi(args[++i]);
         } else if (args[i] == "--replay-batch-size" && i + 1 < args.size()) {
             replay_batch_size = std::stoi(args[++i]);
+        } else if (args[i] == "--heuristic-weight" && i + 1 < args.size()) {
+            heuristic_weight = std::stod(args[++i]);
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -168,6 +173,7 @@ int handle_play(const std::vector<std::string>& args) {
     config.discount_factor = discount_factor;
     config.replay_buffer_size = replay_buffer_size;
     config.replay_batch_size = replay_batch_size;
+    config.heuristic_weight = heuristic_weight;
 
     Engine engine(config);
 
@@ -178,6 +184,9 @@ int handle_play(const std::vector<std::string>& args) {
         loaded_checkpoint = checkpoint_path;
     } else if (!fresh) {
         std::string latest = find_latest_checkpoint(save_dir);
+        if (latest.empty() && save_dir == "checkpoints") {
+            latest = find_latest_checkpoint("../checkpoints");
+        }
         if (!latest.empty()) {
             engine.load_checkpoint(latest);
             loaded_checkpoint = latest;
@@ -202,6 +211,7 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Discount Factor:     " << config.discount_factor << "\n";
     std::cout << "  Replay Buffer Size:  " << config.replay_buffer_size << "\n";
     std::cout << "  Replay Batch Size:   " << config.replay_batch_size << "\n";
+    std::cout << "  Heuristic Weight (w):" << config.heuristic_weight << "\n";
     std::cout << "  Params:              " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
@@ -327,6 +337,7 @@ int handle_play_human(const std::vector<std::string>& args) {
     std::string device = "cpu";
     std::string color_str = "white";
     std::string checkpoint_path = "";
+    double heuristic_weight = 0.2;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -342,6 +353,8 @@ int handle_play_human(const std::vector<std::string>& args) {
             checkpoint_path = args[++i];
         } else if (args[i] == "--device" && i + 1 < args.size()) {
             device = args[++i];
+        } else if (args[i] == "--heuristic-weight" && i + 1 < args.size()) {
+            heuristic_weight = std::stod(args[++i]);
         } else {
             std::cerr << "Unknown play-human option: " << args[i] << "\n";
             return 1;
@@ -360,6 +373,7 @@ int handle_play_human(const std::vector<std::string>& args) {
     config.top_n = top_n;
     config.learning_rate = 0.0; // Freeze learning during human play
     config.device = device;
+    config.heuristic_weight = heuristic_weight;
 
     Engine engine(config);
 
@@ -368,6 +382,9 @@ int handle_play_human(const std::vector<std::string>& args) {
         std::cout << "Loaded checkpoint: " << checkpoint_path << "\n";
     } else {
         std::string latest = find_latest_checkpoint("checkpoints");
+        if (latest.empty()) {
+            latest = find_latest_checkpoint("../checkpoints");
+        }
         if (!latest.empty()) {
             engine.load_checkpoint(latest);
             std::cout << "Auto-resumed from latest checkpoint: " << latest << "\n";

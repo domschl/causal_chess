@@ -24,6 +24,7 @@ struct SearchConfig {
     double discount_factor = 0.97;
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
+    double heuristic_weight = 0.2;
 };
 
 class Engine {
@@ -73,6 +74,10 @@ private:
     std::vector<std::pair<chess::Move, float>> _score_moves(chess::Board& board, const chess::Movelist& moves);
     void _td_update(const chess::Board& board, float target_value);
     static std::optional<float> _terminal_value(const chess::Board& board);
+    float _space_control_score(const chess::Board& board);
+    float _quiescence_search(chess::Board& board, float alpha, float beta, int q_depth);
+    float _static_material_score(const chess::Board& board);
+    float _calculate_heuristic(const chess::Board& board);
 
     SearchConfig config;
     torch::Device device;

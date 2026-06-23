@@ -36,7 +36,7 @@ Engine::Engine(const SearchConfig& config, ValueNetwork model)
     : config(config),
       device(resolve_device(config.device)) {
     if (model.is_empty()) {
-        this->model = ValueNetwork();
+        this->model = ValueNetwork(15);
     } else {
         this->model = model;
     }
@@ -166,7 +166,12 @@ float Engine::_search(chess::Board& board, int depth) {
 
     // 2. Leaf evaluation (no gradients)
     if (depth <= 0) {
-        return evaluate(board);
+        float nn_val = evaluate(board);
+        if (config.heuristic_weight <= 0.0) {
+            return nn_val;
+        }
+        float h_val = _calculate_heuristic(board);
+        return (1.0f - config.heuristic_weight) * nn_val + config.heuristic_weight * h_val;
     }
 
     chess::Movelist moves;
@@ -471,6 +476,135 @@ void Engine::load_checkpoint(const std::string& path) {
     archive.load_from(path, device);
     model->load(archive);
     model->eval();
+}
+
+float Engine::_space_control_score(const chess::Board& board) {
+    double white_score = 0.0;
+    double black_score = 0.0;
+
+    for (int sq_idx = 0; sq_idx < 64; ++sq_idx) {
+        chess::Square sq(sq_idx);
+        double weight = 0.1; // Default: Rest of the board
+        
+        int rank = sq_idx >> 3;
+        int file = sq_idx & 7;
+
+        // Check if inside d4-e5 (ranks 3-4, files 3-4, 0-indexed)
+        if (rank >= 3 && rank <= 4 && file >= 3 && file <= 4) {
+            weight = 1.0;
+        }
+        // Check if inside c3-f6 (ranks 2-5, files 2-5, 0-indexed)
+        else if (rank >= 2 && rank <= 5 && file >= 2 && file <= 5) {
+            weight = 0.4;
+        }
+
+        if (board.isAttacked(sq, chess::Color::WHITE)) {
+            white_score += weight;
+        }
+        if (board.isAttacked(sq, chess::Color::BLACK)) {
+            black_score += weight;
+        }
+    }
+
+    // Phase factor: active non-pawns / 16.0
+    int non_pawns = board.pieces(chess::PieceType::KNIGHT).count() +
+                    board.pieces(chess::PieceType::BISHOP).count() +
+                    board.pieces(chess::PieceType::ROOK).count() +
+                    board.pieces(chess::PieceType::QUEEN).count();
+    double phase_factor = static_cast<double>(non_pawns) / 16.0;
+
+    return static_cast<float>((white_score - black_score) * phase_factor);
+}
+
+float Engine::_static_material_score(const chess::Board& board) {
+    auto score_color = [&](chess::Color color) {
+        float val = 0.0f;
+        val += board.pieces(chess::PieceType::PAWN, color).count() * 1.0f;
+        val += board.pieces(chess::PieceType::KNIGHT, color).count() * 3.0f;
+        val += board.pieces(chess::PieceType::BISHOP, color).count() * 3.0f;
+        val += board.pieces(chess::PieceType::ROOK, color).count() * 5.0f;
+        val += board.pieces(chess::PieceType::QUEEN, color).count() * 9.0f;
+        return val;
+    };
+    return score_color(chess::Color::WHITE) - score_color(chess::Color::BLACK);
+}
+
+float Engine::_quiescence_search(chess::Board& board, float alpha, float beta, int q_depth) {
+    float stand_pat = _static_material_score(board);
+    bool is_white = (board.sideToMove() == chess::Color::WHITE);
+
+    if (is_white) {
+        if (stand_pat >= beta) return beta;
+        if (stand_pat > alpha) alpha = stand_pat;
+    } else {
+        if (stand_pat <= alpha) return alpha;
+        if (stand_pat < beta) beta = stand_pat;
+    }
+
+    if (q_depth >= 4) {
+        return stand_pat;
+    }
+
+    chess::Movelist moves;
+    chess::movegen::legalmoves<chess::movegen::MoveGenType::CAPTURE>(moves, board);
+    if (moves.empty()) {
+        return stand_pat;
+    }
+
+    auto get_piece_value = [](chess::PieceType pt) {
+        switch (pt.internal()) {
+            case chess::PieceType::underlying::PAWN: return 100;
+            case chess::PieceType::underlying::KNIGHT: return 300;
+            case chess::PieceType::underlying::BISHOP: return 300;
+            case chess::PieceType::underlying::ROOK: return 500;
+            case chess::PieceType::underlying::QUEEN: return 900;
+            case chess::PieceType::underlying::KING: return 10000;
+            default: return 0;
+        }
+    };
+
+    // MVV-LVA sorting for captures
+    std::vector<std::pair<chess::Move, int>> sorted_moves;
+    sorted_moves.reserve(moves.size());
+    for (const auto& m : moves) {
+        auto victim_type = board.at(m.to()) != chess::Piece() ? board.at(m.to()).type() : chess::PieceType::PAWN;
+        auto attacker_type = board.at(m.from()).type();
+        int score = get_piece_value(victim_type) * 10 - get_piece_value(attacker_type);
+        sorted_moves.push_back({m, score});
+    }
+    std::sort(sorted_moves.begin(), sorted_moves.end(), [](const auto& a, const auto& b) {
+        return a.second > b.second;
+    });
+
+    if (is_white) {
+        for (const auto& sm : sorted_moves) {
+            board.makeMove(sm.first);
+            float score = _quiescence_search(board, alpha, beta, q_depth + 1);
+            board.unmakeMove(sm.first);
+
+            if (score >= beta) return beta;
+            if (score > alpha) alpha = score;
+        }
+        return alpha;
+    } else {
+        for (const auto& sm : sorted_moves) {
+            board.makeMove(sm.first);
+            float score = _quiescence_search(board, alpha, beta, q_depth + 1);
+            board.unmakeMove(sm.first);
+
+            if (score <= alpha) return alpha;
+            if (score < beta) beta = score;
+        }
+        return beta;
+    }
+}
+
+float Engine::_calculate_heuristic(const chess::Board& board) {
+    chess::Board board_copy = board;
+    float material_diff = _quiescence_search(board_copy, -1e9f, 1e9f, 0);
+    float space_diff = _space_control_score(board);
+    float total_units = material_diff + 0.1f * space_diff;
+    return 0.5f + 0.5f * std::tanh(total_units / 8.0f);
 }
 
 } // namespace causal_chess

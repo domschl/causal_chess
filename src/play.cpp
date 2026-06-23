@@ -281,6 +281,51 @@ void print_board_unicode(const chess::Board& board, chess::Color perspective) {
     std::cout << "\n";
 }
 
+std::string preprocess_move_input(const std::string& raw_input) {
+    std::string input = raw_input;
+    // Strip leading and trailing spaces
+    if (!input.empty()) {
+        input.erase(input.find_last_not_of(" \t\r\n") + 1);
+        input.erase(0, input.find_first_not_of(" \t\r\n"));
+    }
+
+    if (input.empty()) return input;
+
+    // 1. Map German piece letters at the beginning of the SAN move (must be uppercase)
+    if (input.size() > 1 && std::isupper(input[0])) {
+        if (input[0] == 'D') input[0] = 'Q';
+        else if (input[0] == 'T') input[0] = 'R';
+        else if (input[0] == 'L') input[0] = 'B';
+        else if (input[0] == 'S') input[0] = 'N';
+    }
+
+    // 2. Map promotion characters at the end of the move (e.g. g7h8d, gxh8=D, gxh8(D), g7h8-d)
+    int last_letter_idx = -1;
+    for (int i = static_cast<int>(input.size()) - 1; i >= 0; --i) {
+        if (std::isalpha(input[i])) {
+            last_letter_idx = i;
+            break;
+        }
+    }
+
+    if (last_letter_idx != -1) {
+        char promo = input[last_letter_idx];
+        char mapped = '\0';
+        if (promo == 'd' || promo == 'D') mapped = 'q';
+        else if (promo == 't' || promo == 'T') mapped = 'r';
+        else if (promo == 'l' || promo == 'L') mapped = 'b';
+        else if (promo == 's' || promo == 'S') mapped = 'n';
+
+        if (mapped != '\0') {
+            if (last_letter_idx >= 3) {
+                input[last_letter_idx] = std::isupper(promo) ? std::toupper(mapped) : mapped;
+            }
+        }
+    }
+
+    return input;
+}
+
 void play_human_loop(Engine& engine, chess::Color human_color) {
     chess::Board board;
 
@@ -318,7 +363,7 @@ void play_human_loop(Engine& engine, chess::Color human_color) {
                     input.erase(input.find_last_not_of(" \t\r\n") + 1);
                     input.erase(0, input.find_first_not_of(" \t\r\n"));
                 }
-
+                input = preprocess_move_input(input);
                 if (input.empty()) continue;
 
                 // Try parsing as SAN

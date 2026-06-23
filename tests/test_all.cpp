@@ -9,6 +9,10 @@
 
 using namespace causal_chess;
 
+namespace causal_chess {
+    std::string preprocess_move_input(const std::string& raw_input);
+}
+
 void test_encoding_shape_and_values() {
     std::cout << "Running: test_encoding_shape_and_values... ";
 
@@ -60,7 +64,7 @@ void test_encoding_shape_and_values() {
 void test_model_output_range_and_gradients() {
     std::cout << "Running: test_model_output_range_and_gradients... ";
 
-    ValueNetwork model;
+    ValueNetwork model(15);
     torch::Tensor x = torch::randn({4, 15, 8, 8});
     torch::Tensor out = model->forward(x);
 
@@ -240,6 +244,67 @@ void test_tensor_symmetry() {
     std::cout << "PASSED\n";
 }
 
+void test_heuristic_evaluation() {
+    std::cout << "Running: test_heuristic_evaluation... ";
+
+    SearchConfig config;
+    config.max_depth = 1;
+    config.heuristic_weight = 0.5;
+
+    Engine engine(config);
+    chess::Board board; // standard starting position
+
+    // Starting position is equal, so evaluation should be around 0.5
+    auto [move, val] = engine.search_position(board);
+    assert(val >= 0.0f && val <= 1.0f);
+
+    // Let's load a position where White has a huge material advantage (White has a queen, Black only king)
+    chess::Board white_up("k1Q5/8/8/8/8/8/8/4K3 w - - 0 1");
+    auto [move_wu, val_wu] = engine.search_position(white_up);
+    assert(val_wu > 0.6f); // White is heavily favored
+
+    // Position where Black has a queen, White only king
+    chess::Board black_up("k1q5/8/8/8/8/8/8/4K3 w - - 0 1");
+    auto [move_bu, val_bu] = engine.search_position(black_up);
+    assert(val_bu < 0.4f); // Black is heavily favored
+
+    std::cout << "PASSED\n";
+}
+
+void test_german_notation_preprocessing() {
+    std::cout << "Running: test_german_notation_preprocessing... ";
+
+    // Test German piece abbreviations to English in SAN
+    assert(preprocess_move_input("Td1") == "Rd1");
+    assert(preprocess_move_input("Sf3") == "Nf3");
+    assert(preprocess_move_input("Le4") == "Be4");
+    assert(preprocess_move_input("Dd5") == "Qd5");
+
+    // Test lowercase/uppercase promotion mapping in UCI
+    assert(preprocess_move_input("g7h8d") == "g7h8q");
+    assert(preprocess_move_input("g7h8D") == "g7h8Q");
+    assert(preprocess_move_input("g7h8t") == "g7h8r");
+    assert(preprocess_move_input("g7h8T") == "g7h8R");
+    assert(preprocess_move_input("g7h8l") == "g7h8b");
+    assert(preprocess_move_input("g7h8L") == "g7h8B");
+    assert(preprocess_move_input("g7h8s") == "g7h8n");
+    assert(preprocess_move_input("g7h8S") == "g7h8N");
+
+    // Test promotion with special symbols (= or - or parenthesis)
+    assert(preprocess_move_input("g7h8=D") == "g7h8=Q");
+    assert(preprocess_move_input("g7h8(D)") == "g7h8(Q)");
+    assert(preprocess_move_input("g7h8-d") == "g7h8-q");
+
+    // Test that standard English moves are untouched
+    assert(preprocess_move_input("e4") == "e4");
+    assert(preprocess_move_input("Nf3") == "Nf3");
+    assert(preprocess_move_input("O-O") == "O-O");
+    assert(preprocess_move_input("g7h8q") == "g7h8q");
+
+    std::cout << "PASSED\n";
+}
+
+
 int main() {
     std::cout << "============================================================\n";
     std::cout << "Starting C++ Causal Chess Unit Tests\n";
@@ -253,6 +318,8 @@ int main() {
         test_checkpoint_roundtrip();
         test_temperature_exploration();
         test_tensor_symmetry();
+        test_heuristic_evaluation();
+        test_german_notation_preprocessing();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";
