@@ -1,0 +1,9 @@
+[project]
+name = "causal-chess"
+version = "0.1.0"
+description = "Causal Chess Engine stats and utility script"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "matplotlib>=3.5.0",
+]
