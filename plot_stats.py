@@ -60,6 +60,16 @@ def read_stats(csv_path):
         
     return games, losses, moves, times, nps, divergences, weights
 
+def moving_average(data, window_size=20):
+    if not data:
+        return []
+    ma = []
+    for i in range(len(data)):
+        start = max(0, i - window_size + 1)
+        window = data[start:i+1]
+        ma.append(sum(window) / len(window))
+    return ma
+
 def main():
     csv_path = "checkpoints/stats.csv"
     if len(sys.argv) > 1:
@@ -128,32 +138,40 @@ def main():
         
         # Subplot 1: Average TD Loss
         axs[0, 0].clear()
-        axs[0, 0].plot(games, losses, color='#1f77b4', linewidth=1.5)
+        axs[0, 0].plot(games, losses, color='#1f77b4', alpha=0.3, linewidth=1.0, label='Raw')
+        axs[0, 0].plot(games, moving_average(losses, 20), color='#1f77b4', linewidth=2.0, label='MA (20)')
         axs[0, 0].set_title("Average TD Loss")
         axs[0, 0].set_xlabel("Game")
         axs[0, 0].set_ylabel("Loss")
+        axs[0, 0].legend()
         
         # Subplot 2: Average H-NN Divergence
         axs[0, 1].clear()
-        axs[0, 1].plot(games, divergences, color='#ff7f0e', linewidth=1.5)
+        axs[0, 1].plot(games, divergences, color='#ff7f0e', alpha=0.3, linewidth=1.0, label='Raw')
+        axs[0, 1].plot(games, moving_average(divergences, 20), color='#ff7f0e', linewidth=2.0, label='MA (20)')
         axs[0, 1].set_title("Heuristic - NN Divergence (MAE)")
         axs[0, 1].set_xlabel("Game")
         axs[0, 1].set_ylabel("Divergence")
+        axs[0, 1].legend()
         
         # Subplot 3: Heuristic Weight (w)
         axs[1, 0].clear()
-        axs[1, 0].plot(games, weights, color='#2ca02c', linewidth=1.5)
+        axs[1, 0].plot(games, weights, color='#2ca02c', alpha=0.3, linewidth=1.0, label='Raw')
+        axs[1, 0].plot(games, moving_average(weights, 20), color='#2ca02c', linewidth=2.0, label='MA (20)')
         axs[1, 0].set_title("Heuristic Weight (w) Monotonic Decay")
         axs[1, 0].set_xlabel("Game")
         axs[1, 0].set_ylabel("Weight")
         axs[1, 0].set_ylim(-0.05, 1.05)
+        axs[1, 0].legend()
         
         # Subplot 4: Moves per Game
         axs[1, 1].clear()
-        axs[1, 1].plot(games, moves, color='#d62728', linewidth=1.5)
+        axs[1, 1].plot(games, moves, color='#d62728', alpha=0.3, linewidth=1.0, label='Raw')
+        axs[1, 1].plot(games, moving_average(moves, 20), color='#d62728', linewidth=2.0, label='MA (20)')
         axs[1, 1].set_title("Moves per Game")
         axs[1, 1].set_xlabel("Game")
         axs[1, 1].set_ylabel("Moves")
+        axs[1, 1].legend()
         
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         
