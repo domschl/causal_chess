@@ -171,8 +171,11 @@ float Engine::_search(chess::Board& board, int depth) {
             return nn_val;
         }
         float h_val = _calculate_heuristic(board);
-        total_heuristic_nn_diff += std::abs(nn_val - h_val);
-        leaf_eval_count++;
+        // Track divergence only on imbalanced positions (|H(s) - 0.5| > 0.05)
+        if (std::abs(h_val - 0.5f) > 0.05f) {
+            total_heuristic_nn_diff += std::abs(nn_val - h_val);
+            leaf_eval_count++;
+        }
         return (1.0f - config.heuristic_weight) * nn_val + config.heuristic_weight * h_val;
     }
 
@@ -380,7 +383,7 @@ void Engine::reset_stats() {
 }
 
 double Engine::get_avg_heuristic_nn_divergence() const {
-    if (leaf_eval_count == 0) return 0.0;
+    if (leaf_eval_count < 20) return 0.25; // Default high divergence if not enough imbalanced states were sampled
     return total_heuristic_nn_diff / leaf_eval_count;
 }
 
