@@ -49,6 +49,7 @@ public:
     // Monitoring stats
     double get_avg_loss() const;
     int get_update_count() const;
+    double get_avg_heuristic_nn_divergence() const;
     void reset_stats();
 
     // Performance metrics
@@ -68,6 +69,8 @@ public:
     // Accessors
     ValueNetwork get_model() { return model; }
     torch::Device get_device() { return device; }
+    void set_heuristic_weight(double w) { config.heuristic_weight = w; }
+    double get_heuristic_weight() const { return config.heuristic_weight; }
 
 private:
     float _search(chess::Board& board, int depth);
@@ -92,6 +95,8 @@ private:
 
     double total_loss = 0.0;
     int update_count = 0;
+    double total_heuristic_nn_diff = 0.0;
+    int64_t leaf_eval_count = 0;
 
     int64_t positions_evaluated = 0;
     double forward_time_secs = 0.0;

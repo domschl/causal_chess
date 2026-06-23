@@ -47,15 +47,16 @@ PlayStats self_play_loop(
     PlayStats stats;
     std::filesystem::create_directories(save_dir);
 
-    std::string csv_path = save_dir + "/loss.csv";
+    std::string csv_path = save_dir + "/stats.csv";
     int start_game_num = 0;
     std::ofstream csv_file;
+    double initial_w = engine.get_heuristic_weight();
     if (resume && std::filesystem::exists(csv_path)) {
         start_game_num = get_last_game_num(csv_path);
         csv_file.open(csv_path, std::ios::app);
     } else {
         csv_file.open(csv_path, std::ios::trunc);
-        csv_file << "game,loss,moves,time,nps\n";
+        csv_file << "game,loss,moves,time,nps,divergence,heuristic_weight\n";
         csv_file.flush();
     }
 
@@ -138,11 +139,15 @@ PlayStats self_play_loop(
             if (total_search_time > 0.0) {
                 nps = engine.get_positions_evaluated() / total_search_time;
             }
+            double avg_div = engine.get_avg_heuristic_nn_divergence();
+            double current_w = engine.get_heuristic_weight();
             csv_file << (start_game_num + game_num) << ","
                      << engine.get_avg_loss() << ","
                      << move_count << ","
                      << elapsed.count() << ","
-                     << static_cast<int64_t>(nps) << "\n";
+                     << static_cast<int64_t>(nps) << ","
+                     << avg_div << ","
+                     << current_w << "\n";
             csv_file.flush();
         }
 
@@ -171,6 +176,8 @@ PlayStats self_play_loop(
             std::cout << "  Backprop:    " << pct_backprop << "%\n";
             std::cout << "  TD updates:  " << engine.get_update_count() << "\n";
             std::cout << "  Avg TD loss: " << engine.get_avg_loss() << "\n";
+            std::cout << "  Avg H-NN Div:" << engine.get_avg_heuristic_nn_divergence() << "\n";
+            std::cout << "  Heur. Weight:" << engine.get_heuristic_weight() << "\n";
             std::cout << "  Record:      W=" << stats.white_wins << "  B=" << stats.black_wins << "  D=" << stats.draws << "  (" << total << " games)\n";
             std::cout << "------------------------------------------------------------\n";
 
@@ -202,6 +209,15 @@ PlayStats self_play_loop(
             if (verbose) {
                 std::cout << "  💾 Checkpoint saved: " << checkpoint_path << "\n\n";
             }
+        }
+
+        // Scheme A: Adaptive weight controller (Divergence-based Monotonic Annealing)
+        if (initial_w > 0.0) {
+            double avg_div = engine.get_avg_heuristic_nn_divergence();
+            double target_w = initial_w * std::max(0.0, std::min(1.0, avg_div / 0.15));
+            double current_w = engine.get_heuristic_weight();
+            double new_w = std::min(current_w, target_w);
+            engine.set_heuristic_weight(new_w);
         }
     }
 

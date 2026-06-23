@@ -171,6 +171,8 @@ float Engine::_search(chess::Board& board, int depth) {
             return nn_val;
         }
         float h_val = _calculate_heuristic(board);
+        total_heuristic_nn_diff += std::abs(nn_val - h_val);
+        leaf_eval_count++;
         return (1.0f - config.heuristic_weight) * nn_val + config.heuristic_weight * h_val;
     }
 
@@ -373,6 +375,13 @@ void Engine::reset_stats() {
     backprop_time_secs = 0.0;
     total_search_time_secs = 0.0;
     total_post_game_train_time_secs = 0.0;
+    total_heuristic_nn_diff = 0.0;
+    leaf_eval_count = 0;
+}
+
+double Engine::get_avg_heuristic_nn_divergence() const {
+    if (leaf_eval_count == 0) return 0.0;
+    return total_heuristic_nn_diff / leaf_eval_count;
 }
 
 void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float outcome) {

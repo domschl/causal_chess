@@ -426,7 +426,7 @@ int handle_plot(const std::vector<std::string>& args) {
         }
     }
 
-    std::string csv_path = save_dir + "/loss.csv";
+    std::string csv_path = save_dir + "/stats.csv";
     if (!std::filesystem::exists(csv_path)) {
         std::cerr << "Error: Log file not found at " << csv_path << ". Run training first.\n";
         return 1;
