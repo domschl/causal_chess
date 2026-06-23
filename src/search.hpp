@@ -24,7 +24,7 @@ struct SearchConfig {
     double discount_factor = 0.97;
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
-    double heuristic_weight = 0.2;
+    double heuristic_weight = 0.5;
 };
 
 class Engine {

@@ -66,7 +66,7 @@ void print_play_human_help() {
     std::cout << "  --color <str>        Your color: white, black (default: white)\n";
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
-    std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.2)\n";
+    std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
 }
 
 void print_play_help() {
@@ -86,7 +86,7 @@ void print_play_help() {
     std::cout << "  --replay-batch-size <n> Mini-batch size sampled from replay buffer (default: 128)\n";
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
-    std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.2)\n";
+    std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
 }
 
 void print_eval_help() {
@@ -121,7 +121,7 @@ int handle_play(const std::vector<std::string>& args) {
     double discount_factor = 0.97;
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
-    double heuristic_weight = 0.2;
+    double heuristic_weight = 0.5;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -337,7 +337,7 @@ int handle_play_human(const std::vector<std::string>& args) {
     std::string device = "cpu";
     std::string color_str = "white";
     std::string checkpoint_path = "";
-    double heuristic_weight = 0.2;
+    double heuristic_weight = 0.5;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
