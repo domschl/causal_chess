@@ -87,6 +87,11 @@ void print_play_help() {
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
     std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
+    std::cout << "  --lr-decay-rate <val>  Learning rate decay multiplier (default: 0.998)\n";
+    std::cout << "  --lr-decay-steps <n>   Interval of games to decay learning rate (default: 10)\n";
+    std::cout << "  --min-lr <val>         Minimum learning rate threshold (default: 1e-6)\n";
+    std::cout << "  --live-lr-scale <val>  Learning rate scale for online TD updates (default: 0.05)\n";
+    std::cout << "  --influence-ratio <val> Target influence ratio for adaptive scaling (default: 0.5)\n";
 }
 
 void print_eval_help() {
@@ -122,6 +127,11 @@ int handle_play(const std::vector<std::string>& args) {
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
     double heuristic_weight = 0.5;
+    double lr_decay_rate = 0.998;
+    int lr_decay_steps = 10;
+    double min_lr = 1e-6;
+    double live_lr_scale = 0.05;
+    double influence_ratio = 0.5;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -157,6 +167,16 @@ int handle_play(const std::vector<std::string>& args) {
             replay_batch_size = std::stoi(args[++i]);
         } else if (args[i] == "--heuristic-weight" && i + 1 < args.size()) {
             heuristic_weight = std::stod(args[++i]);
+        } else if (args[i] == "--lr-decay-rate" && i + 1 < args.size()) {
+            lr_decay_rate = std::stod(args[++i]);
+        } else if (args[i] == "--lr-decay-steps" && i + 1 < args.size()) {
+            lr_decay_steps = std::stoi(args[++i]);
+        } else if (args[i] == "--min-lr" && i + 1 < args.size()) {
+            min_lr = std::stod(args[++i]);
+        } else if (args[i] == "--live-lr-scale" && i + 1 < args.size()) {
+            live_lr_scale = std::stod(args[++i]);
+        } else if (args[i] == "--influence-ratio" && i + 1 < args.size()) {
+            influence_ratio = std::stod(args[++i]);
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -174,6 +194,11 @@ int handle_play(const std::vector<std::string>& args) {
     config.replay_buffer_size = replay_buffer_size;
     config.replay_batch_size = replay_batch_size;
     config.heuristic_weight = heuristic_weight;
+    config.lr_decay_rate = lr_decay_rate;
+    config.lr_decay_steps = lr_decay_steps;
+    config.min_learning_rate = min_lr;
+    config.live_lr_scale = live_lr_scale;
+    config.adaptive_influence_ratio = influence_ratio;
 
     Engine engine(config);
 

@@ -202,6 +202,9 @@ PlayStats self_play_loop(
             std::cout << result << "\n\n";
         }
 
+        // Step the learning rate scheduler
+        engine.step_scheduler();
+
         // Save checkpoint
         if (game_num % save_interval == 0) {
             std::string checkpoint_path = save_dir + "/checkpoint.pt";

@@ -166,11 +166,19 @@ void test_checkpoint_roundtrip() {
 
     SearchConfig config;
     config.device = "cpu";
+    config.lr_decay_rate = 0.95;
+    config.lr_decay_steps = 1; // Decay every step for testing
+    config.min_learning_rate = 4.9e-5; // Learning rate won't decay below this
 
     Engine engine1(config);
     chess::Board board;
 
     float val1 = engine1.evaluate(board);
+
+    // Set custom parameter values
+    engine1.set_heuristic_weight(0.1234);
+    engine1.set_learning_rate(5e-5);
+    engine1.step_scheduler(); // scheduler_step becomes 1, decayed lr (4.75e-5) is clamped to min_lr (4.9e-5)
 
     std::string path = "test_temp_checkpoint.pt";
     engine1.save_checkpoint(path);
@@ -182,9 +190,16 @@ void test_checkpoint_roundtrip() {
 
     // Clean up
     std::filesystem::remove(path);
+    std::filesystem::remove("test_temp_checkpoint.opt");
+    std::filesystem::remove("test_temp_checkpoint.json");
 
     // Verify float equivalence
     assert(std::abs(val1 - val2) < 1e-6f);
+
+    // Verify state and hyperparameter loading
+    assert(std::abs(engine2.get_heuristic_weight() - 0.1234) < 1e-6);
+    assert(std::abs(engine2.get_learning_rate() - 4.9e-5) < 1e-9);
+    assert(engine2.get_scheduler_step() == 1);
 
     std::cout << "PASSED\n";
 }

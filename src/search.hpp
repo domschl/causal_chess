@@ -25,6 +25,13 @@ struct SearchConfig {
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
     double heuristic_weight = 0.5;
+    double lr_decay_rate = 0.998;
+    int lr_decay_steps = 10;
+    double min_learning_rate = 1e-6;
+    double live_lr_scale = 0.05;
+    double adaptive_influence_ratio = 0.5;
+    double nominal_live_lr_scale = 0.05;
+    int max_post_game_epochs = 15;
 };
 
 class Engine {
@@ -66,11 +73,15 @@ public:
     void save_checkpoint(const std::string& path);
     void load_checkpoint(const std::string& path);
 
-    // Accessors
+    // Accessors and Scheduler
     ValueNetwork get_model() { return model; }
     torch::Device get_device() { return device; }
     void set_heuristic_weight(double w) { config.heuristic_weight = w; }
     double get_heuristic_weight() const { return config.heuristic_weight; }
+    void set_learning_rate(double lr);
+    double get_learning_rate() const { return config.learning_rate; }
+    void step_scheduler();
+    int get_scheduler_step() const { return scheduler_step; }
 
 private:
     float _search(chess::Board& board, int depth);
@@ -97,6 +108,9 @@ private:
     int update_count = 0;
     double total_heuristic_nn_diff = 0.0;
     int64_t leaf_eval_count = 0;
+    int scheduler_step = 0;
+    int live_updates_this_game = 0;
+    int post_updates_this_game = 0;
 
     int64_t positions_evaluated = 0;
     double forward_time_secs = 0.0;

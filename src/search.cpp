@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <numeric>
 #include <algorithm>
+#include <fstream>
+#include <filesystem>
 
 namespace causal_chess {
 
@@ -279,6 +281,13 @@ void Engine::_td_update(const chess::Board& board, float target_value) {
     torch::Tensor batch = torch::stack({orig_tensor, mirrored_tensor}).to(device);
     torch::Tensor target = torch::tensor({{target_value}, {target_value}}, torch::dtype(torch::kFloat32).device(device));
 
+    // Temporarily scale learning rate for online TD updates
+    double base_lr = config.learning_rate;
+    double live_lr = base_lr * config.live_lr_scale;
+    for (auto& group : optimizer->param_groups()) {
+        static_cast<torch::optim::AdamOptions&>(group.options()).lr(live_lr);
+    }
+
     model->train();
     optimizer->zero_grad();
 
@@ -295,12 +304,19 @@ void Engine::_td_update(const chess::Board& board, float target_value) {
     torch::nn::utils::clip_grad_norm_(model->parameters(), config.grad_clip);
     optimizer->step();
     model->eval();
+
+    // Restore base learning rate
+    for (auto& group : optimizer->param_groups()) {
+        static_cast<torch::optim::AdamOptions&>(group.options()).lr(base_lr);
+    }
+
     auto end_b = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed_b = end_b - start_b;
     backprop_time_secs += elapsed_b.count();
 
     total_loss += loss.item<double>();
     update_count++;
+    live_updates_this_game++;
 }
 
 float Engine::evaluate(const chess::Board& board) {
@@ -380,6 +396,8 @@ void Engine::reset_stats() {
     total_post_game_train_time_secs = 0.0;
     total_heuristic_nn_diff = 0.0;
     leaf_eval_count = 0;
+    live_updates_this_game = 0;
+    post_updates_this_game = 0;
 }
 
 double Engine::get_avg_heuristic_nn_divergence() const {
@@ -469,6 +487,7 @@ void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float out
             
             total_loss += loss.item<double>();
             update_count++;
+            post_updates_this_game++;
         }
     }
     model->eval();
@@ -476,18 +495,182 @@ void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float out
     auto train_end = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = train_end - train_start;
     total_post_game_train_time_secs += elapsed.count();
+
+    // Perform hybrid runtime-adaptive scaling (epochs + live_lr_scale) for the next game
+    if (live_updates_this_game > 0 && post_updates_this_game > 0) {
+        double updates_per_epoch = static_cast<double>(post_updates_this_game) / config.post_game_epochs;
+        if (updates_per_epoch <= 0.0) updates_per_epoch = 16.0;
+
+        // 1. Calculate how many epochs would be required to balance the influence at nominal_live_lr_scale
+        double required_epochs = (live_updates_this_game * config.nominal_live_lr_scale) / 
+                                  (config.adaptive_influence_ratio * updates_per_epoch);
+        
+        int next_epochs = std::max(1, std::min(config.max_post_game_epochs, 
+                          static_cast<int>(std::round(required_epochs))));
+        
+        // 2. Adjust live_lr_scale to cover any remaining dampening factor
+        double target_scale = config.adaptive_influence_ratio * 
+                              ((next_epochs * updates_per_epoch) / static_cast<double>(live_updates_this_game));
+        config.live_lr_scale = std::max(1e-5, std::min(1.0, target_scale));
+        
+        // 3. Update the post-game epochs for the next game
+        config.post_game_epochs = next_epochs;
+
+        std::cout << "  ⚖️ Hybrid Adaptive Scaling updated for next game:\n";
+        std::cout << "     Post-Game Epochs:  " << config.post_game_epochs << " (calculated: " << required_epochs << ")\n";
+        std::cout << "     Live LR Scale:     " << config.live_lr_scale << "\n";
+        std::cout << "     (Based on " << live_updates_this_game << " live vs " << post_updates_this_game << " post updates in last game)\n";
+    }
+}
+
+static std::string get_opt_path(const std::string& path) {
+    if (path.length() >= 3 && path.substr(path.length() - 3) == ".pt") {
+        return path.substr(0, path.length() - 3) + ".opt";
+    }
+    return path + ".opt";
+}
+
+static std::string get_json_path(const std::string& path) {
+    if (path.length() >= 3 && path.substr(path.length() - 3) == ".pt") {
+        return path.substr(0, path.length() - 3) + ".json";
+    }
+    return path + ".json";
+}
+
+void Engine::set_learning_rate(double lr) {
+    config.learning_rate = lr;
+    for (auto& group : optimizer->param_groups()) {
+        static_cast<torch::optim::AdamOptions&>(group.options()).lr(lr);
+    }
+}
+
+void Engine::step_scheduler() {
+    scheduler_step++;
+    if (config.lr_decay_rate < 1.0 && config.lr_decay_steps > 0) {
+        if (scheduler_step % config.lr_decay_steps == 0) {
+            double new_lr = config.learning_rate * config.lr_decay_rate;
+            if (new_lr < config.min_learning_rate) {
+                new_lr = config.min_learning_rate;
+            }
+            if (new_lr != config.learning_rate) {
+                set_learning_rate(new_lr);
+                std::cout << "  📉 Scheduler stepped: Learning rate decayed to " << new_lr << "\n";
+            }
+        }
+    }
 }
 
 void Engine::save_checkpoint(const std::string& path) {
-    // libtorch serialize uses torch::save
+    // 1. Save model weights
     torch::save(model, path);
+
+    // 2. Save optimizer state
+    std::string opt_path = get_opt_path(path);
+    try {
+        torch::save(*optimizer, opt_path);
+    } catch (const std::exception& e) {
+        std::cerr << "Warning: Failed to save optimizer state to " << opt_path << ": " << e.what() << "\n";
+    }
+
+    // 3. Save config & state to JSON
+    std::string json_path = get_json_path(path);
+    std::ofstream f(json_path);
+    if (f.is_open()) {
+        f << "{\n";
+        f << "  \"max_depth\": " << config.max_depth << ",\n";
+        f << "  \"top_n\": " << config.top_n << ",\n";
+        f << "  \"learning_rate\": " << config.learning_rate << ",\n";
+        f << "  \"grad_clip\": " << config.grad_clip << ",\n";
+        f << "  \"temperature\": " << config.temperature << ",\n";
+        f << "  \"post_game_epochs\": " << config.post_game_epochs << ",\n";
+        f << "  \"discount_factor\": " << config.discount_factor << ",\n";
+        f << "  \"replay_buffer_size\": " << config.replay_buffer_size << ",\n";
+        f << "  \"replay_batch_size\": " << config.replay_batch_size << ",\n";
+        f << "  \"heuristic_weight\": " << config.heuristic_weight << ",\n";
+        f << "  \"lr_decay_rate\": " << config.lr_decay_rate << ",\n";
+        f << "  \"lr_decay_steps\": " << config.lr_decay_steps << ",\n";
+        f << "  \"min_learning_rate\": " << config.min_learning_rate << ",\n";
+        f << "  \"live_lr_scale\": " << config.live_lr_scale << ",\n";
+        f << "  \"adaptive_influence_ratio\": " << config.adaptive_influence_ratio << ",\n";
+        f << "  \"nominal_live_lr_scale\": " << config.nominal_live_lr_scale << ",\n";
+        f << "  \"max_post_game_epochs\": " << config.max_post_game_epochs << ",\n";
+        f << "  \"scheduler_step\": " << scheduler_step << "\n";
+        f << "}\n";
+    }
 }
 
 void Engine::load_checkpoint(const std::string& path) {
+    // 1. Load model weights
     torch::serialize::InputArchive archive;
     archive.load_from(path, device);
     model->load(archive);
     model->eval();
+
+    // 2. Load optimizer state if it exists
+    std::string opt_path = get_opt_path(path);
+    if (std::filesystem::exists(opt_path)) {
+        try {
+            torch::serialize::InputArchive opt_archive;
+            opt_archive.load_from(opt_path, device);
+            optimizer->load(opt_archive);
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: Failed to load optimizer state from " << opt_path << ": " << e.what() << "\n";
+        }
+    }
+
+    // 3. Load config from JSON if it exists
+    std::string json_path = get_json_path(path);
+    if (std::filesystem::exists(json_path)) {
+        std::ifstream f(json_path);
+        if (f.is_open()) {
+            std::string line;
+            while (std::getline(f, line)) {
+                size_t colon = line.find(':');
+                if (colon == std::string::npos) continue;
+                
+                size_t first_quote = line.find('"');
+                size_t second_quote = line.find('"', first_quote + 1);
+                if (first_quote == std::string::npos || second_quote == std::string::npos) continue;
+                std::string key = line.substr(first_quote + 1, second_quote - first_quote - 1);
+                
+                std::string val_str = line.substr(colon + 1);
+                while (!val_str.empty() && (std::isspace(val_str.front()) || val_str.front() == '"')) {
+                    val_str.erase(val_str.begin());
+                }
+                while (!val_str.empty() && (std::isspace(val_str.back()) || val_str.back() == ',' || val_str.back() == '}' || val_str.back() == '"')) {
+                    val_str.pop_back();
+                }
+                
+                if (val_str.empty()) continue;
+                
+                try {
+                    if (key == "max_depth") config.max_depth = std::stoi(val_str);
+                    else if (key == "top_n") config.top_n = std::stoi(val_str);
+                    else if (key == "learning_rate") {
+                        double lr = std::stod(val_str);
+                        set_learning_rate(lr);
+                    }
+                    else if (key == "grad_clip") config.grad_clip = std::stod(val_str);
+                    else if (key == "temperature") config.temperature = std::stod(val_str);
+                    else if (key == "post_game_epochs") config.post_game_epochs = std::stoi(val_str);
+                    else if (key == "discount_factor") config.discount_factor = std::stod(val_str);
+                    else if (key == "replay_buffer_size") config.replay_buffer_size = std::stoi(val_str);
+                    else if (key == "replay_batch_size") config.replay_batch_size = std::stoi(val_str);
+                    else if (key == "heuristic_weight") config.heuristic_weight = std::stod(val_str);
+                    else if (key == "lr_decay_rate") config.lr_decay_rate = std::stod(val_str);
+                    else if (key == "lr_decay_steps") config.lr_decay_steps = std::stoi(val_str);
+                    else if (key == "min_learning_rate") config.min_learning_rate = std::stod(val_str);
+                    else if (key == "live_lr_scale") config.live_lr_scale = std::stod(val_str);
+                    else if (key == "adaptive_influence_ratio") config.adaptive_influence_ratio = std::stod(val_str);
+                    else if (key == "nominal_live_lr_scale") config.nominal_live_lr_scale = std::stod(val_str);
+                    else if (key == "max_post_game_epochs") config.max_post_game_epochs = std::stoi(val_str);
+                    else if (key == "scheduler_step") scheduler_step = std::stoi(val_str);
+                } catch (const std::exception& e) {
+                    std::cerr << "Warning: Error parsing checkpoint JSON field '" << key << "' with value '" << val_str << "': " << e.what() << "\n";
+                }
+            }
+        }
+    }
 }
 
 float Engine::_space_control_score(const chess::Board& board) {
