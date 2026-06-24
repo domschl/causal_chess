@@ -75,7 +75,8 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
     });
 
     // 3. Keep top-N moves
-    int keep = std::min(static_cast<int>(move_scores.size()), config.top_n);
+    int current_top_n = config.top_n_vector.empty() ? config.top_n : config.top_n_vector[0];
+    int keep = std::min(static_cast<int>(move_scores.size()), current_top_n);
     std::vector<std::pair<chess::Move, float>> selected_moves(move_scores.begin(), move_scores.begin() + keep);
 
     // Add all checks and captures from the remaining moves
@@ -201,7 +202,13 @@ float Engine::_search(chess::Board& board, int depth) {
         }
     });
 
-    int keep = std::min(static_cast<int>(move_scores.size()), config.top_n);
+    int current_top_n = config.top_n;
+    if (!config.top_n_vector.empty()) {
+        int idx = std::max(0, config.max_depth - depth);
+        idx = std::min(idx, static_cast<int>(config.top_n_vector.size() - 1));
+        current_top_n = config.top_n_vector[idx];
+    }
+    int keep = std::min(static_cast<int>(move_scores.size()), current_top_n);
     std::vector<std::pair<chess::Move, float>> selected_moves(move_scores.begin(), move_scores.begin() + keep);
 
     // Add all checks and captures from the remaining moves
@@ -579,6 +586,11 @@ void Engine::save_checkpoint(const std::string& path) {
         f << "{\n";
         f << "  \"max_depth\": " << config.max_depth << ",\n";
         f << "  \"top_n\": " << config.top_n << ",\n";
+        f << "  \"top_n_vector\": \"";
+        for (size_t i = 0; i < config.top_n_vector.size(); ++i) {
+            f << config.top_n_vector[i] << (i + 1 < config.top_n_vector.size() ? "," : "");
+        }
+        f << "\",\n";
         f << "  \"learning_rate\": " << config.learning_rate << ",\n";
         f << "  \"grad_clip\": " << config.grad_clip << ",\n";
         f << "  \"temperature\": " << config.temperature << ",\n";
@@ -646,6 +658,16 @@ void Engine::load_checkpoint(const std::string& path) {
                 try {
                     if (key == "max_depth") config.max_depth = std::stoi(val_str);
                     else if (key == "top_n") config.top_n = std::stoi(val_str);
+                    else if (key == "top_n_vector") {
+                        config.top_n_vector.clear();
+                        std::stringstream ss(val_str);
+                        std::string item;
+                        while (std::getline(ss, item, ',')) {
+                            if (!item.empty()) {
+                                config.top_n_vector.push_back(std::stoi(item));
+                            }
+                        }
+                    }
                     else if (key == "learning_rate") {
                         double lr = std::stod(val_str);
                         set_learning_rate(lr);
@@ -800,6 +822,72 @@ float Engine::_calculate_heuristic(const chess::Board& board) {
     float space_diff = _space_control_score(board);
     float total_units = material_diff + 0.1f * space_diff;
     return 0.5f + 0.5f * std::tanh(total_units / 8.0f);
+}
+
+bool parse_top_n_vector(const std::string& top_n_str, int depth, int& out_top_n, std::vector<int>& out_top_n_vector, std::string& error_msg) {
+    if (top_n_str.empty()) {
+        error_msg = "empty --top-n parameter";
+        return false;
+    }
+    
+    std::vector<int> parsed;
+    std::stringstream ss(top_n_str);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        size_t start = item.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            error_msg = "invalid element in --top-n: empty value";
+            return false;
+        }
+        size_t end = item.find_last_not_of(" \t\r\n");
+        item = item.substr(start, end - start + 1);
+        
+        try {
+            size_t idx = 0;
+            int val = std::stoi(item, &idx);
+            if (idx != item.size()) {
+                error_msg = "invalid integer value in --top-n: '" + item + "'";
+                return false;
+            }
+            if (val < 1) {
+                error_msg = "--top-n values must be at least 1, got " + std::to_string(val);
+                return false;
+            }
+            parsed.push_back(val);
+        } catch (...) {
+            error_msg = "invalid integer representation in --top-n: '" + item + "'";
+            return false;
+        }
+    }
+    
+    if (parsed.empty()) {
+        error_msg = "empty --top-n parameter";
+        return false;
+    }
+    
+    if (parsed.size() == 1) {
+        out_top_n = parsed[0];
+        out_top_n_vector = std::vector<int>(depth, parsed[0]);
+        return true;
+    }
+    
+    if (static_cast<int>(parsed.size()) != depth) {
+        error_msg = "number of --top-n parameters (" + std::to_string(parsed.size()) + 
+                    ") must equal search depth (" + std::to_string(depth) + ")";
+        return false;
+    }
+    
+    for (size_t i = 1; i < parsed.size(); ++i) {
+        if (parsed[i] > parsed[i - 1]) {
+            error_msg = "--top-n parameters must be non-increasing (monotone), but " + 
+                        std::to_string(parsed[i]) + " > " + std::to_string(parsed[i - 1]);
+            return false;
+        }
+    }
+    
+    out_top_n = parsed[0];
+    out_top_n_vector = parsed;
+    return true;
 }
 
 } // namespace causal_chess

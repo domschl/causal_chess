@@ -3,6 +3,7 @@
 #include <vector>
 #include <filesystem>
 #include <chrono>
+#include <sstream>
 #include "search.hpp"
 #include "play.hpp"
 #include "chess.hpp"
@@ -62,7 +63,7 @@ void print_play_human_help() {
     std::cout << "Usage: causal-chess-cpp play-human [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --depth <n>          Search depth (default: 4)\n";
-    std::cout << "  --top-n <n>          Moves to expand per node (default: 5)\n";
+    std::cout << "  --top-n <val>        Moves to expand per node (constant or comma-separated list of size <depth> in non-increasing order, default: 5)\n";
     std::cout << "  --color <str>        Your color: white, black (default: white)\n";
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
@@ -74,7 +75,7 @@ void print_play_help() {
     std::cout << "Options:\n";
     std::cout << "  --games <n>            Number of self-play games (default: 100)\n";
     std::cout << "  --depth <n>            Search depth (default: 4)\n";
-    std::cout << "  --top-n <n>            Moves to expand per node (default: 5)\n";
+    std::cout << "  --top-n <val>          Moves to expand per node (constant or comma-separated list of size <depth> in non-increasing order, default: 5)\n";
     std::cout << "  --lr <val>             Learning rate (default: 1e-4)\n";
     std::cout << "  --device <str>         Torch device: cpu, mps, cuda, auto (default: cpu)\n";
     std::cout << "  --save-dir <path>      Checkpoint directory (default: checkpoints)\n";
@@ -105,7 +106,7 @@ void print_move_help() {
     std::cout << "Usage: causal-chess-cpp move <fen> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "  --depth <n>          Search depth (default: 4)\n";
-    std::cout << "  --top-n <n>          Moves to expand per node (default: 5)\n";
+    std::cout << "  --top-n <val>        Moves to expand per node (constant or comma-separated list of size <depth> in non-increasing order, default: 5)\n";
     std::cout << "  --lr <val>           Learning rate (default: 1e-4)\n";
     std::cout << "  --checkpoint <path>  Model checkpoint file\n";
     std::cout << "  --device <str>       Torch device (default: cpu)\n";
@@ -114,7 +115,7 @@ void print_move_help() {
 int handle_play(const std::vector<std::string>& args) {
     int games = 100;
     int depth = 4;
-    int top_n = 5;
+    std::string top_n_str = "5";
     double lr = 1e-4;
     std::string device = "cpu";
     std::string save_dir = "checkpoints";
@@ -142,7 +143,7 @@ int handle_play(const std::vector<std::string>& args) {
         } else if (args[i] == "--depth" && i + 1 < args.size()) {
             depth = std::stoi(args[++i]);
         } else if (args[i] == "--top-n" && i + 1 < args.size()) {
-            top_n = std::stoi(args[++i]);
+            top_n_str = args[++i];
         } else if (args[i] == "--lr" && i + 1 < args.size()) {
             lr = std::stod(args[++i]);
         } else if (args[i] == "--device" && i + 1 < args.size()) {
@@ -183,9 +184,18 @@ int handle_play(const std::vector<std::string>& args) {
         }
     }
 
+    int top_n = 5;
+    std::vector<int> top_n_vector;
+    std::string error_msg;
+    if (!parse_top_n_vector(top_n_str, depth, top_n, top_n_vector, error_msg)) {
+        std::cerr << "Error parsing --top-n: " << error_msg << "\n";
+        return 1;
+    }
+
     SearchConfig config;
     config.max_depth = depth;
     config.top_n = top_n;
+    config.top_n_vector = top_n_vector;
     config.learning_rate = lr;
     config.device = device;
     config.temperature = temperature;
@@ -227,7 +237,15 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "============================================================\n";
     std::cout << "Causal Chess (C++) — Self-Play Training\n";
     std::cout << "  Depth:               " << config.max_depth << "\n";
-    std::cout << "  Top-N:               " << config.top_n << "\n";
+    std::cout << "  Top-N:               " << config.top_n;
+    if (!config.top_n_vector.empty()) {
+        std::cout << " [";
+        for (size_t i = 0; i < config.top_n_vector.size(); ++i) {
+            std::cout << config.top_n_vector[i] << (i + 1 < config.top_n_vector.size() ? "," : "");
+        }
+        std::cout << "]";
+    }
+    std::cout << "\n";
     std::cout << "  LR:                  " << config.learning_rate << "\n";
     std::cout << "  Device:              " << engine.get_device() << "\n";
     std::cout << "  Games:               " << games << "\n";
@@ -296,7 +314,7 @@ int handle_move(const std::vector<std::string>& args) {
 
     std::string fen = args[0];
     int depth = 4;
-    int top_n = 5;
+    std::string top_n_str = "5";
     double lr = 1e-4;
     std::string checkpoint_path = "";
     std::string device = "cpu";
@@ -305,7 +323,7 @@ int handle_move(const std::vector<std::string>& args) {
         if (args[i] == "--depth" && i + 1 < args.size()) {
             depth = std::stoi(args[++i]);
         } else if (args[i] == "--top-n" && i + 1 < args.size()) {
-            top_n = std::stoi(args[++i]);
+            top_n_str = args[++i];
         } else if (args[i] == "--lr" && i + 1 < args.size()) {
             lr = std::stod(args[++i]);
         } else if (args[i] == "--checkpoint" && i + 1 < args.size()) {
@@ -318,9 +336,18 @@ int handle_move(const std::vector<std::string>& args) {
         }
     }
 
+    int top_n = 5;
+    std::vector<int> top_n_vector;
+    std::string error_msg;
+    if (!parse_top_n_vector(top_n_str, depth, top_n, top_n_vector, error_msg)) {
+        std::cerr << "Error parsing --top-n: " << error_msg << "\n";
+        return 1;
+    }
+
     SearchConfig config;
     config.max_depth = depth;
     config.top_n = top_n;
+    config.top_n_vector = top_n_vector;
     config.learning_rate = lr;
     config.device = device;
 
@@ -358,7 +385,7 @@ int handle_move(const std::vector<std::string>& args) {
 
 int handle_play_human(const std::vector<std::string>& args) {
     int depth = 4;
-    int top_n = 5;
+    std::string top_n_str = "5";
     std::string device = "cpu";
     std::string color_str = "white";
     std::string checkpoint_path = "";
@@ -371,7 +398,7 @@ int handle_play_human(const std::vector<std::string>& args) {
         } else if (args[i] == "--depth" && i + 1 < args.size()) {
             depth = std::stoi(args[++i]);
         } else if (args[i] == "--top-n" && i + 1 < args.size()) {
-            top_n = std::stoi(args[++i]);
+            top_n_str = args[++i];
         } else if (args[i] == "--color" && i + 1 < args.size()) {
             color_str = args[++i];
         } else if (args[i] == "--checkpoint" && i + 1 < args.size()) {
@@ -393,9 +420,18 @@ int handle_play_human(const std::vector<std::string>& args) {
         std::cerr << "Warning: unknown color '" << color_str << "', defaulting to White.\n";
     }
 
+    int top_n = 5;
+    std::vector<int> top_n_vector;
+    std::string error_msg;
+    if (!parse_top_n_vector(top_n_str, depth, top_n, top_n_vector, error_msg)) {
+        std::cerr << "Error parsing --top-n: " << error_msg << "\n";
+        return 1;
+    }
+
     SearchConfig config;
     config.max_depth = depth;
     config.top_n = top_n;
+    config.top_n_vector = top_n_vector;
     config.learning_rate = 0.0; // Freeze learning during human play
     config.device = device;
     config.heuristic_weight = heuristic_weight;

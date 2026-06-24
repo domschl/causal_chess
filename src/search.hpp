@@ -7,15 +7,19 @@
 #include <optional>
 #include <memory>
 #include <deque>
+#include <sstream>
 #include <torch/torch.h>
 #include "chess.hpp"
 #include "model.hpp"
 
 namespace causal_chess {
 
+bool parse_top_n_vector(const std::string& top_n_str, int depth, int& out_top_n, std::vector<int>& out_top_n_vector, std::string& error_msg);
+
 struct SearchConfig {
     int max_depth = 4;
     int top_n = 5;
+    std::vector<int> top_n_vector = {5};
     double learning_rate = 1e-4;
     std::string device = "cpu"; // "cpu", "mps", "cuda", "auto"
     double grad_clip = 1.0;

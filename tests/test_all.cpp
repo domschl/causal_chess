@@ -319,6 +319,72 @@ void test_german_notation_preprocessing() {
     std::cout << "PASSED\n";
 }
 
+void test_top_n_vector_validation_and_search() {
+    std::cout << "Running: test_top_n_vector_validation_and_search... ";
+
+    int top_n = 0;
+    std::vector<int> top_n_vector;
+    std::string err;
+
+    // 1. Valid cases
+    assert(parse_top_n_vector("5", 3, top_n, top_n_vector, err));
+    assert(top_n == 5);
+    assert(top_n_vector == std::vector<int>({5, 5, 5}));
+
+    assert(parse_top_n_vector("8,5,3", 3, top_n, top_n_vector, err));
+    assert(top_n == 8);
+    assert(top_n_vector == std::vector<int>({8, 5, 3}));
+
+    assert(parse_top_n_vector("  8,   5, 3  ", 3, top_n, top_n_vector, err));
+    assert(top_n == 8);
+    assert(top_n_vector == std::vector<int>({8, 5, 3}));
+
+    // 2. Invalid cases
+    // Value less than 1
+    assert(!parse_top_n_vector("8,0,3", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector("8,-2,3", 3, top_n, top_n_vector, err));
+
+    // Wrong size
+    assert(!parse_top_n_vector("8,5", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector("8,5,3,2", 3, top_n, top_n_vector, err));
+
+    // Non-monotone (increasing)
+    assert(!parse_top_n_vector("5,8,3", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector("8,3,5", 3, top_n, top_n_vector, err));
+
+    // Malformed
+    assert(!parse_top_n_vector("", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector(",", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector("8,,3", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector("8,abc,3", 3, top_n, top_n_vector, err));
+    assert(!parse_top_n_vector("8,5.5,3", 3, top_n, top_n_vector, err));
+
+    // 3. Search integration
+    SearchConfig config;
+    config.max_depth = 3;
+    config.top_n = 8;
+    config.top_n_vector = {8, 5, 3};
+    config.device = "cpu";
+
+    Engine engine(config);
+    chess::Board board; // start pos
+    auto [move, val] = engine.search_position(board);
+
+    // Verify search completed and returned a legal move
+    chess::Movelist moves;
+    chess::movegen::legalmoves(moves, board);
+    bool is_legal = false;
+    for (const auto& m : moves) {
+        if (m == move) {
+            is_legal = true;
+            break;
+        }
+    }
+    assert(is_legal);
+    assert(val >= 0.0f && val <= 1.0f);
+
+    std::cout << "PASSED\n";
+}
 
 int main() {
     std::cout << "============================================================\n";
@@ -335,6 +401,7 @@ int main() {
         test_tensor_symmetry();
         test_heuristic_evaluation();
         test_german_notation_preprocessing();
+        test_top_n_vector_validation_and_search();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";
