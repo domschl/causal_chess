@@ -4,8 +4,10 @@
 #include <filesystem>
 #include <chrono>
 #include <sstream>
+#include <nlohmann/json.hpp>
 #include "search.hpp"
 #include "play.hpp"
+#include "web_server.hpp"
 #include "chess.hpp"
 
 using namespace causal_chess;
@@ -265,7 +267,144 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Params:              " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
-    self_play_loop(engine, games, save_dir, save_interval, true, !fresh);
+    std::string web_dir = "web";
+    if (!std::filesystem::exists(web_dir) && std::filesystem::exists("../web")) {
+        web_dir = "../web";
+    }
+    web_dir = std::filesystem::weakly_canonical(web_dir).string();
+    WebServer web_server(8080, web_dir);
+    web_server.start();
+
+    // Game thread state variables
+    std::mutex game_thread_mutex;
+    std::thread game_thread;
+    std::atomic<bool> game_thread_running{false};
+    std::string active_mode = "self_play";
+
+    auto stop_active_game = [&]() {
+        if (game_thread_running) {
+            engine.set_stop_requested(true);
+            if (game_thread.joinable()) {
+                game_thread.join();
+            }
+            game_thread_running = false;
+        }
+    };
+
+    auto start_game_thread = [&](const std::string& mode) {
+        stop_active_game();
+        engine.set_stop_requested(false);
+        engine.set_paused(false);
+        active_mode = mode;
+        game_thread_running = true;
+
+        game_thread = std::thread([&engine, &web_server, mode, save_dir, save_interval, games, fresh, &game_thread_running]() {
+            try {
+                if (mode == "self_play") {
+                    self_play_loop(engine, games, save_dir, save_interval, true, !fresh, &web_server);
+                } else if (mode == "human_white") {
+                    play_human_loop(engine, chess::Color::WHITE, &web_server);
+                } else if (mode == "human_black") {
+                    play_human_loop(engine, chess::Color::BLACK, &web_server);
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Game loop error: " << e.what() << "\n";
+            }
+            game_thread_running = false;
+        });
+    };
+
+    // WebSocket Message Handling
+    web_server.on_message([&](const std::string& msg_str) {
+        try {
+            auto js = nlohmann::json::parse(msg_str);
+            if (js.contains("action")) {
+                std::string action = js["action"];
+                if (action == "pause") {
+                    engine.set_paused(true);
+                    std::cout << "  ⏸️ Play paused via Web Interface\n";
+                } else if (action == "resume") {
+                    engine.set_paused(false);
+                    std::cout << "  ▶️ Play resumed via Web Interface\n";
+                } else if (action == "start") {
+                    std::lock_guard<std::mutex> lock(game_thread_mutex);
+                    std::string mode = js.value("mode", "self_play");
+                    
+                    if (js.contains("config")) {
+                        auto cfg = js["config"];
+                        if (cfg.contains("max_depth")) {
+                            engine.set_max_depth(cfg["max_depth"].get<int>());
+                        }
+                        if (cfg.contains("top_n")) {
+                            engine.set_top_n(cfg["top_n"].get<int>());
+                        }
+                        if (cfg.contains("top_n_vector")) {
+                            std::vector<int> vec = cfg["top_n_vector"].get<std::vector<int>>();
+                            engine.set_top_n_vector(vec);
+                        }
+                        if (cfg.contains("heuristic_weight")) {
+                            engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
+                        }
+                        if (cfg.contains("learning_rate")) {
+                            engine.set_learning_rate(cfg["learning_rate"].get<double>());
+                        }
+                        if (cfg.contains("temperature")) {
+                            engine.set_temperature(cfg["temperature"].get<double>());
+                        }
+                        if (cfg.contains("adaptive_scaling")) {
+                            engine.set_adaptive_scaling(cfg["adaptive_scaling"].get<bool>());
+                        }
+                    }
+
+                    std::cout << "  🚀 Starting session (" << mode << ") via Web Interface\n";
+                    start_game_thread(mode);
+                } else if (action == "update_config") {
+                    if (js.contains("config")) {
+                        auto cfg = js["config"];
+                        if (cfg.contains("max_depth")) {
+                            engine.set_max_depth(cfg["max_depth"].get<int>());
+                        }
+                        if (cfg.contains("top_n")) {
+                            engine.set_top_n(cfg["top_n"].get<int>());
+                        }
+                        if (cfg.contains("top_n_vector")) {
+                            std::vector<int> vec = cfg["top_n_vector"].get<std::vector<int>>();
+                            engine.set_top_n_vector(vec);
+                        }
+                        if (cfg.contains("heuristic_weight")) {
+                            engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
+                        }
+                        if (cfg.contains("learning_rate")) {
+                            engine.set_learning_rate(cfg["learning_rate"].get<double>());
+                        }
+                        if (cfg.contains("temperature")) {
+                            engine.set_temperature(cfg["temperature"].get<double>());
+                        }
+                        if (cfg.contains("adaptive_scaling")) {
+                            engine.set_adaptive_scaling(cfg["adaptive_scaling"].get<bool>());
+                        }
+                    }
+                    std::cout << "  🔧 Configuration updated via Web Interface\n";
+                } else if (action == "human_move") {
+                    if (js.contains("move")) {
+                        std::string mv = js["move"];
+                        engine.push_human_move(mv);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error handling websocket message: " << e.what() << "\n";
+        }
+    });
+
+    start_game_thread("self_play");
+
+    // Keep process alive while serving Web UI
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    stop_active_game();
     return 0;
 }
 
@@ -461,7 +600,144 @@ int handle_play_human(const std::vector<std::string>& args) {
         }
     }
 
-    play_human_loop(engine, human_color);
+    std::string web_dir = "web";
+    if (!std::filesystem::exists(web_dir) && std::filesystem::exists("../web")) {
+        web_dir = "../web";
+    }
+    web_dir = std::filesystem::weakly_canonical(web_dir).string();
+    WebServer web_server(8080, web_dir);
+    web_server.start();
+
+    // Game thread state variables
+    std::mutex game_thread_mutex;
+    std::thread game_thread;
+    std::atomic<bool> game_thread_running{false};
+    std::string active_mode = (human_color == chess::Color::WHITE ? "human_white" : "human_black");
+
+    auto stop_active_game = [&]() {
+        if (game_thread_running) {
+            engine.set_stop_requested(true);
+            if (game_thread.joinable()) {
+                game_thread.join();
+            }
+            game_thread_running = false;
+        }
+    };
+
+    auto start_game_thread = [&](const std::string& mode) {
+        stop_active_game();
+        engine.set_stop_requested(false);
+        engine.set_paused(false);
+        active_mode = mode;
+        game_thread_running = true;
+
+        game_thread = std::thread([&engine, &web_server, mode, &game_thread_running]() {
+            try {
+                if (mode == "self_play") {
+                    self_play_loop(engine, 100, "checkpoints", 10, true, true, &web_server);
+                } else if (mode == "human_white") {
+                    play_human_loop(engine, chess::Color::WHITE, &web_server);
+                } else if (mode == "human_black") {
+                    play_human_loop(engine, chess::Color::BLACK, &web_server);
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Game loop error: " << e.what() << "\n";
+            }
+            game_thread_running = false;
+        });
+    };
+
+    // WebSocket Message Handling
+    web_server.on_message([&](const std::string& msg_str) {
+        try {
+            auto js = nlohmann::json::parse(msg_str);
+            if (js.contains("action")) {
+                std::string action = js["action"];
+                if (action == "pause") {
+                    engine.set_paused(true);
+                    std::cout << "  ⏸️ Play paused via Web Interface\n";
+                } else if (action == "resume") {
+                    engine.set_paused(false);
+                    std::cout << "  ▶️ Play resumed via Web Interface\n";
+                } else if (action == "start") {
+                    std::lock_guard<std::mutex> lock(game_thread_mutex);
+                    std::string mode = js.value("mode", "self_play");
+                    
+                    if (js.contains("config")) {
+                        auto cfg = js["config"];
+                        if (cfg.contains("max_depth")) {
+                            engine.set_max_depth(cfg["max_depth"].get<int>());
+                        }
+                        if (cfg.contains("top_n")) {
+                            engine.set_top_n(cfg["top_n"].get<int>());
+                        }
+                        if (cfg.contains("top_n_vector")) {
+                            std::vector<int> vec = cfg["top_n_vector"].get<std::vector<int>>();
+                            engine.set_top_n_vector(vec);
+                        }
+                        if (cfg.contains("heuristic_weight")) {
+                            engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
+                        }
+                        if (cfg.contains("learning_rate")) {
+                            engine.set_learning_rate(cfg["learning_rate"].get<double>());
+                        }
+                        if (cfg.contains("temperature")) {
+                            engine.set_temperature(cfg["temperature"].get<double>());
+                        }
+                        if (cfg.contains("adaptive_scaling")) {
+                            engine.set_adaptive_scaling(cfg["adaptive_scaling"].get<bool>());
+                        }
+                    }
+
+                    std::cout << "  🚀 Starting session (" << mode << ") via Web Interface\n";
+                    start_game_thread(mode);
+                } else if (action == "update_config") {
+                    if (js.contains("config")) {
+                        auto cfg = js["config"];
+                        if (cfg.contains("max_depth")) {
+                            engine.set_max_depth(cfg["max_depth"].get<int>());
+                        }
+                        if (cfg.contains("top_n")) {
+                            engine.set_top_n(cfg["top_n"].get<int>());
+                        }
+                        if (cfg.contains("top_n_vector")) {
+                            std::vector<int> vec = cfg["top_n_vector"].get<std::vector<int>>();
+                            engine.set_top_n_vector(vec);
+                        }
+                        if (cfg.contains("heuristic_weight")) {
+                            engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
+                        }
+                        if (cfg.contains("learning_rate")) {
+                            engine.set_learning_rate(cfg["learning_rate"].get<double>());
+                        }
+                        if (cfg.contains("temperature")) {
+                            engine.set_temperature(cfg["temperature"].get<double>());
+                        }
+                        if (cfg.contains("adaptive_scaling")) {
+                            engine.set_adaptive_scaling(cfg["adaptive_scaling"].get<bool>());
+                        }
+                    }
+                    std::cout << "  🔧 Configuration updated via Web Interface\n";
+                } else if (action == "human_move") {
+                    if (js.contains("move")) {
+                        std::string mv = js["move"];
+                        engine.push_human_move(mv);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Error handling websocket message: " << e.what() << "\n";
+        }
+    });
+
+    start_game_thread(human_color == chess::Color::WHITE ? "human_white" : "human_black");
+
+    // Keep process alive while serving Web UI
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    stop_active_game();
     return 0;
 }
 

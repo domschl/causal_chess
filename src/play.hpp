@@ -13,6 +13,8 @@ struct PlayStats {
     int draws = 0;
 };
 
+class WebServer;
+
 /**
  * @brief Run a continuous self-play training loop.
  *
@@ -29,7 +31,8 @@ PlayStats self_play_loop(
     const std::string& save_dir = "checkpoints",
     int save_interval = 10,
     bool verbose = true,
-    bool resume = true
+    bool resume = true,
+    WebServer* web_server = nullptr
 );
 
 /**
@@ -46,7 +49,7 @@ void print_board_unicode(const chess::Board& board, chess::Color perspective = c
  * @param engine The chess engine.
  * @param human_color Color of the human player.
  */
-void play_human_loop(Engine& engine, chess::Color human_color);
+void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_server = nullptr);
 
 } // namespace causal_chess
 

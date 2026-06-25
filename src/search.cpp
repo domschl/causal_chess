@@ -1,5 +1,7 @@
 #include "search.hpp"
 #include "encoding.hpp"
+#include "web_server.hpp"
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <random>
 #include <cmath>
@@ -51,7 +53,20 @@ Engine::Engine(const SearchConfig& config, ValueNetwork model)
     );
 }
 
-std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::optional<double> temperature) {
+static std::string safe_move_to_san(const chess::Board& board, chess::Move move) {
+    if (move == chess::Move::NO_MOVE) return "";
+    try {
+        if (board.at(move.to()) != chess::Piece() && board.at(move.to()).type() == chess::PieceType::KING) {
+            return chess::uci::moveToUci(move);
+        }
+        return chess::uci::moveToSan(board, move);
+    } catch (...) {
+        return chess::uci::moveToUci(move);
+    }
+}
+
+std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::optional<double> temperature, WebServer* web_server) {
+    std::lock_guard<std::recursive_mutex> lock(config_mutex);
     auto start = std::chrono::steady_clock::now();
     chess::Movelist moves;
     chess::movegen::legalmoves(moves, board);
@@ -91,11 +106,58 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
     std::vector<std::pair<chess::Move, float>> searched_moves;
     searched_moves.reserve(selected_moves.size());
 
-    for (const auto& ms : selected_moves) {
+    nlohmann::json candidates = nlohmann::json::array();
+
+    auto last_broadcast = std::chrono::steady_clock::now();
+
+    for (size_t idx = 0; idx < selected_moves.size(); ++idx) {
+        const auto& ms = selected_moves[idx];
+        if (stop_requested) {
+            break;
+        }
+
         board.makeMove(ms.first);
-        float val = _search(board, config.max_depth - 1);
+        std::vector<chess::Move> child_pv;
+        float val = _search(board, config.max_depth - 1, child_pv);
         board.unmakeMove(ms.first);
         searched_moves.emplace_back(ms.first, val);
+
+        nlohmann::json candidate;
+        candidate["move"] = chess::uci::moveToUci(ms.first);
+        candidate["san"] = safe_move_to_san(board, ms.first);
+        candidate["score"] = val;
+
+        nlohmann::json pv_json = nlohmann::json::array();
+        pv_json.push_back(safe_move_to_san(board, ms.first));
+        chess::Board board_copy = board;
+        board_copy.makeMove(ms.first);
+        for (const auto& pv_move : child_pv) {
+            pv_json.push_back(safe_move_to_san(board_copy, pv_move));
+            board_copy.makeMove(pv_move);
+        }
+        candidate["pv"] = pv_json;
+        candidates.push_back(candidate);
+
+        bool is_last = (idx + 1 == selected_moves.size());
+        auto now = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_ms = now - last_broadcast;
+
+        if (web_server && (is_last || elapsed_ms.count() >= 100.0)) {
+            nlohmann::json msg;
+            msg["type"] = "thinking";
+            msg["current_depth"] = config.max_depth;
+            msg["nodes_evaluated"] = positions_evaluated;
+            std::chrono::duration<double> elapsed = now - start;
+            double nps = elapsed.count() > 0 ? (positions_evaluated / elapsed.count()) : 0;
+            msg["nps"] = static_cast<int>(nps);
+            msg["candidates"] = candidates;
+            web_server->broadcast(msg.dump());
+            last_broadcast = now;
+        }
+    }
+
+    if (searched_moves.empty()) {
+        searched_moves.emplace_back(selected_moves[0].first, is_white ? -1.0f : 2.0f);
     }
 
     double temp = temperature.value_or(config.temperature);
@@ -148,8 +210,6 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
         }
     }
 
-
-
     // 5. Root TD update
     _td_update(board, best_value);
 
@@ -160,15 +220,17 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
     return {best_move, best_value};
 }
 
-float Engine::_search(chess::Board& board, int depth) {
+float Engine::_search(chess::Board& board, int depth, std::vector<chess::Move>& pv) {
     // 1. Terminal detection
     auto term = _terminal_value(board);
     if (term.has_value()) {
+        pv.clear();
         return *term;
     }
 
     // 2. Leaf evaluation (no gradients)
     if (depth <= 0) {
+        pv.clear();
         float nn_val = evaluate(board);
         if (config.heuristic_weight <= 0.0) {
             return nn_val;
@@ -185,6 +247,7 @@ float Engine::_search(chess::Board& board, int depth) {
     chess::Movelist moves;
     chess::movegen::legalmoves(moves, board);
     if (moves.empty()) {
+        pv.clear();
         return 0.5f; // Draw fallback
     }
 
@@ -221,18 +284,28 @@ float Engine::_search(chess::Board& board, int depth) {
 
     // 5. Search recursively
     float best_value = is_white ? -1.0f : 2.0f;
+    std::vector<chess::Move> best_pv;
     for (const auto& ms : selected_moves) {
+        if (stop_requested) {
+            break;
+        }
+
         board.makeMove(ms.first);
-        float val = _search(board, depth - 1);
+        std::vector<chess::Move> child_pv;
+        float val = _search(board, depth - 1, child_pv);
         board.unmakeMove(ms.first);
 
         if (is_white) {
             if (val > best_value) {
                 best_value = val;
+                best_pv = child_pv;
+                best_pv.insert(best_pv.begin(), ms.first);
             }
         } else {
             if (val < best_value) {
                 best_value = val;
+                best_pv = child_pv;
+                best_pv.insert(best_pv.begin(), ms.first);
             }
         }
     }
@@ -240,6 +313,7 @@ float Engine::_search(chess::Board& board, int depth) {
     // 6. Online TD update
     _td_update(board, best_value);
 
+    pv = best_pv;
     return best_value;
 }
 
@@ -413,6 +487,7 @@ double Engine::get_avg_heuristic_nn_divergence() const {
 }
 
 void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float outcome) {
+    std::lock_guard<std::recursive_mutex> lock(config_mutex);
     if (boards.empty()) return;
     auto train_start = std::chrono::steady_clock::now();
 
@@ -545,6 +620,7 @@ static std::string get_json_path(const std::string& path) {
 }
 
 void Engine::set_learning_rate(double lr) {
+    std::lock_guard<std::recursive_mutex> lock(config_mutex);
     config.learning_rate = lr;
     for (auto& group : optimizer->param_groups()) {
         static_cast<torch::optim::AdamOptions&>(group.options()).lr(lr);
@@ -552,6 +628,7 @@ void Engine::set_learning_rate(double lr) {
 }
 
 void Engine::step_scheduler() {
+    std::lock_guard<std::recursive_mutex> lock(config_mutex);
     scheduler_step++;
     if (config.lr_decay_rate < 1.0 && config.lr_decay_steps > 0) {
         if (scheduler_step % config.lr_decay_steps == 0) {
@@ -568,6 +645,7 @@ void Engine::step_scheduler() {
 }
 
 void Engine::save_checkpoint(const std::string& path) {
+    std::lock_guard<std::recursive_mutex> lock(config_mutex);
     // 1. Save model weights
     torch::save(model, path);
 
@@ -613,6 +691,7 @@ void Engine::save_checkpoint(const std::string& path) {
 }
 
 void Engine::load_checkpoint(const std::string& path) {
+    std::lock_guard<std::recursive_mutex> lock(config_mutex);
     // 1. Load model weights
     torch::serialize::InputArchive archive;
     archive.load_from(path, device);

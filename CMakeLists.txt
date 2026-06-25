@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
-project(causal-chess-cpp CXX)
+project(causal-chess-cpp C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,8 @@ add_executable(causal-chess-cpp
     src/model.cpp
     src/search.cpp
     src/play.cpp
+    src/third_party/mongoose/mongoose.c
+    src/web_server.cpp
 )
 
 target_include_directories(causal-chess-cpp PRIVATE 
@@ -33,6 +35,8 @@ add_executable(causal-chess-tests
     src/model.cpp
     src/search.cpp
     src/play.cpp
+    src/third_party/mongoose/mongoose.c
+    src/web_server.cpp
 )
 
 target_include_directories(causal-chess-tests PRIVATE 

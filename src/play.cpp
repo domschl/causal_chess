@@ -4,8 +4,22 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include "web_server.hpp"
+#include "nlohmann/json.hpp"
 
 namespace causal_chess {
+
+static std::string safe_move_to_san(const chess::Board& board, chess::Move move) {
+    if (move == chess::Move::NO_MOVE) return "";
+    try {
+        if (board.at(move.to()) != chess::Piece() && board.at(move.to()).type() == chess::PieceType::KING) {
+            return chess::uci::moveToUci(move);
+        }
+        return chess::uci::moveToSan(board, move);
+    } catch (...) {
+        return chess::uci::moveToUci(move);
+    }
+}
 
 static int get_last_game_num(const std::string& csv_path) {
     std::ifstream file(csv_path);
@@ -42,7 +56,8 @@ PlayStats self_play_loop(
     const std::string& save_dir,
     int save_interval,
     bool verbose,
-    bool resume
+    bool resume,
+    WebServer* web_server
 ) {
     PlayStats stats;
     std::filesystem::create_directories(save_dir);
@@ -70,18 +85,55 @@ PlayStats self_play_loop(
         std::vector<chess::Board> visited_boards;
         int move_count = 0;
 
+        // Broadcast starting position
+        if (web_server) {
+            nlohmann::json pos_msg;
+            pos_msg["type"] = "position";
+            pos_msg["fen"] = board.getFen();
+            pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
+            pos_msg["game_index"] = start_game_num + game_num;
+            pos_msg["last_move"] = "";
+            web_server->broadcast(pos_msg.dump());
+        }
+
         // Play game until termination
         while (board.isGameOver().first == chess::GameResultReason::NONE) {
+            while (engine.is_paused() && !engine.is_stop_requested()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            if (engine.is_stop_requested()) {
+                break;
+            }
+
             visited_boards.push_back(board);
-            auto [best_move, value] = engine.search_position(board);
+            auto [best_move, value] = engine.search_position(board, std::nullopt, web_server);
+
+            if (engine.is_stop_requested()) {
+                break;
+            }
 
             // Record SAN string before making move
-            std::string san = chess::uci::moveToSan(board, best_move);
+            std::string san = safe_move_to_san(board, best_move);
             moves_san.push_back(san);
             move_evals.push_back(value);
 
             board.makeMove(best_move);
             move_count++;
+
+            // Broadcast move position update
+            if (web_server) {
+                nlohmann::json pos_msg;
+                pos_msg["type"] = "position";
+                pos_msg["fen"] = board.getFen();
+                pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
+                pos_msg["game_index"] = start_game_num + game_num;
+                pos_msg["last_move"] = san;
+                web_server->broadcast(pos_msg.dump());
+            }
+        }
+
+        if (engine.is_stop_requested()) {
+            break;
         }
 
         // Determine result
@@ -149,6 +201,29 @@ PlayStats self_play_loop(
                      << avg_div << ","
                      << current_w << "\n";
             csv_file.flush();
+        }
+
+        if (web_server) {
+            nlohmann::json stats_msg;
+            stats_msg["type"] = "stats";
+            stats_msg["game"] = start_game_num + game_num;
+            stats_msg["loss"] = engine.get_avg_loss();
+            stats_msg["moves"] = move_count;
+            stats_msg["duration_secs"] = elapsed.count();
+            
+            double total_search_time = engine.get_total_search_time_secs();
+            double nps = 0.0;
+            if (total_search_time > 0.0) {
+                nps = engine.get_positions_evaluated() / total_search_time;
+            }
+            stats_msg["nps"] = static_cast<int64_t>(nps);
+            stats_msg["h_nn_div"] = engine.get_avg_heuristic_nn_divergence();
+            stats_msg["heuristic_weight"] = engine.get_heuristic_weight();
+            stats_msg["record"]["white_wins"] = stats.white_wins;
+            stats_msg["record"]["black_wins"] = stats.black_wins;
+            stats_msg["record"]["draws"] = stats.draws;
+            
+            web_server->broadcast(stats_msg.dump());
         }
 
         if (verbose) {
@@ -345,22 +420,49 @@ std::string preprocess_move_input(const std::string& raw_input) {
     return input;
 }
 
-void play_human_loop(Engine& engine, chess::Color human_color) {
+void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_server) {
     chess::Board board;
 
     std::cout << "Game started! You are playing as " 
               << (human_color == chess::Color::WHITE ? "White" : "Black") << ".\n";
-    std::cout << "Enter your moves in SAN (e.g. e4, Nf3) or UCI (e.g. e2e4) format.\n";
+    if (!web_server) {
+        std::cout << "Enter your moves in SAN (e.g. e4, Nf3) or UCI (e.g. e2e4) format.\n";
+    }
+
+    if (web_server) {
+        engine.clear_human_moves();
+        nlohmann::json pos_msg;
+        pos_msg["type"] = "position";
+        pos_msg["fen"] = board.getFen();
+        pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
+        pos_msg["game_index"] = 0;
+        pos_msg["last_move"] = "";
+        web_server->broadcast(pos_msg.dump());
+    }
 
     while (true) {
+        if (engine.is_stop_requested()) {
+            return;
+        }
+
         auto [reason, result] = board.isGameOver();
         if (reason != chess::GameResultReason::NONE) {
             print_board_unicode(board, human_color);
             std::cout << "Game Over! ";
+            std::string outcome_str = "Game Over! ";
             if (result == chess::GameResult::DRAW) {
                 std::cout << "It's a draw.\n";
+                outcome_str += "It's a draw.";
             } else if (result == chess::GameResult::LOSE) {
-                std::cout << (board.sideToMove() == chess::Color::WHITE ? "Black" : "White") << " wins by checkmate!\n";
+                std::string winner = (board.sideToMove() == chess::Color::WHITE ? "Black" : "White");
+                std::cout << winner << " wins by checkmate!\n";
+                outcome_str += winner + " wins by checkmate!";
+            }
+            if (web_server) {
+                nlohmann::json over_msg;
+                over_msg["type"] = "game_over";
+                over_msg["result"] = outcome_str;
+                web_server->broadcast(over_msg.dump());
             }
             break;
         }
@@ -368,15 +470,32 @@ void play_human_loop(Engine& engine, chess::Color human_color) {
         bool human_turn = (board.sideToMove() == human_color);
 
         if (human_turn) {
-            print_board_unicode(board, human_color);
+            if (!web_server) {
+                print_board_unicode(board, human_color);
+            }
             chess::Move move = chess::Move::NO_MOVE;
             while (true) {
-                std::cout << "Your move: ";
-                std::string input;
-                if (!std::getline(std::cin, input)) {
-                    std::cout << "\nGame aborted.\n";
+                if (engine.is_stop_requested()) {
                     return;
                 }
+
+                std::string input;
+                if (web_server) {
+                    auto opt_move = engine.pop_human_move();
+                    if (opt_move.has_value()) {
+                        input = *opt_move;
+                    } else {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                        continue;
+                    }
+                } else {
+                    std::cout << "Your move: ";
+                    if (!std::getline(std::cin, input)) {
+                        std::cout << "\nGame aborted.\n";
+                        return;
+                    }
+                }
+
                 // Strip whitespace
                 if (!input.empty()) {
                     input.erase(input.find_last_not_of(" \t\r\n") + 1);
@@ -401,17 +520,50 @@ void play_human_loop(Engine& engine, chess::Color human_color) {
                     }
                 } catch (...) {}
 
-                std::cout << "Invalid or illegal move. Try again.\n";
+                if (web_server) {
+                    nlohmann::json err_msg;
+                    err_msg["type"] = "move_error";
+                    err_msg["error"] = "Invalid or illegal move: " + input;
+                    web_server->broadcast(err_msg.dump());
+                } else {
+                    std::cout << "Invalid or illegal move. Try again.\n";
+                }
             }
 
-            std::cout << "You played: " << chess::uci::moveToSan(board, move) << "\n";
+            std::string san = safe_move_to_san(board, move);
+            std::cout << "You played: " << san << "\n";
             board.makeMove(move);
+
+            if (web_server) {
+                nlohmann::json pos_msg;
+                pos_msg["type"] = "position";
+                pos_msg["fen"] = board.getFen();
+                pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
+                pos_msg["game_index"] = 0;
+                pos_msg["last_move"] = san;
+                web_server->broadcast(pos_msg.dump());
+            }
         } else {
             std::cout << "Model is thinking...\n";
-            auto [best_move, value] = engine.search_position(board);
-            std::cout << "Model played: " << chess::uci::moveToSan(board, best_move) 
-                      << " (eval: " << value << ")\n";
+            auto [best_move, value] = engine.search_position(board, std::nullopt, web_server);
+            
+            if (engine.is_stop_requested()) {
+                return;
+            }
+
+            std::string san = safe_move_to_san(board, best_move);
+            std::cout << "Model played: " << san << " (eval: " << value << ")\n";
             board.makeMove(best_move);
+
+            if (web_server) {
+                nlohmann::json pos_msg;
+                pos_msg["type"] = "position";
+                pos_msg["fen"] = board.getFen();
+                pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
+                pos_msg["game_index"] = 0;
+                pos_msg["last_move"] = san;
+                web_server->broadcast(pos_msg.dump());
+            }
         }
     }
 }

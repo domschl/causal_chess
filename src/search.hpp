@@ -8,11 +8,14 @@
 #include <memory>
 #include <deque>
 #include <sstream>
+#include <mutex>
 #include <torch/torch.h>
 #include "chess.hpp"
 #include "model.hpp"
 
 namespace causal_chess {
+
+class WebServer;
 
 bool parse_top_n_vector(const std::string& top_n_str, int depth, int& out_top_n, std::vector<int>& out_top_n_vector, std::string& error_msg);
 
@@ -49,7 +52,7 @@ public:
      * @param board The chess board (modified temporarily but restored before returning).
      * @return A pair of (best_move, evaluation).
      */
-    std::pair<chess::Move, float> search_position(chess::Board& board, std::optional<double> temperature = std::nullopt);
+    std::pair<chess::Move, float> search_position(chess::Board& board, std::optional<double> temperature = std::nullopt, WebServer* web_server = nullptr);
 
     /**
      * @brief Evaluate a board state statically (inference only, no gradients, no updates).
@@ -81,19 +84,110 @@ public:
     // Accessors and Scheduler
     ValueNetwork get_model() { return model; }
     torch::Device get_device() { return device; }
-    void set_heuristic_weight(double w) { config.heuristic_weight = w; }
-    double get_heuristic_weight() const { return config.heuristic_weight; }
+    
+    void set_heuristic_weight(double w) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.heuristic_weight = w;
+    }
+    double get_heuristic_weight() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.heuristic_weight;
+    }
+    
     void set_learning_rate(double lr);
-    double get_learning_rate() const { return config.learning_rate; }
-    bool get_adaptive_scaling() const { return config.adaptive_scaling; }
-    void set_adaptive_scaling(bool val) { config.adaptive_scaling = val; }
-    double get_live_lr_scale() const { return config.live_lr_scale; }
-    int get_post_game_epochs() const { return config.post_game_epochs; }
+    double get_learning_rate() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.learning_rate;
+    }
+    
+    bool get_adaptive_scaling() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.adaptive_scaling;
+    }
+    void set_adaptive_scaling(bool val) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.adaptive_scaling = val;
+    }
+    
+    double get_live_lr_scale() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.live_lr_scale;
+    }
+    int get_post_game_epochs() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.post_game_epochs;
+    }
+    
+    void set_temperature(double temp) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.temperature = temp;
+    }
+    double get_temperature() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.temperature;
+    }
+    
+    void set_max_depth(int depth) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.max_depth = depth;
+    }
+    int get_max_depth() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.max_depth;
+    }
+    
+    void set_top_n(int top_n) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.top_n = top_n;
+    }
+    int get_top_n() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.top_n;
+    }
+
+    void set_top_n_vector(const std::vector<int>& vec) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.top_n_vector = vec;
+    }
+    std::vector<int> get_top_n_vector() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.top_n_vector;
+    }
+    
     void step_scheduler();
     int get_scheduler_step() const { return scheduler_step; }
 
+    // Session Control API
+    bool is_paused() const { return paused; }
+    void set_paused(bool val) { paused = val; }
+    
+    bool is_stop_requested() const { return stop_requested; }
+    void set_stop_requested(bool val) { stop_requested = val; }
+
+    bool is_reset_requested() const { return reset_requested; }
+    void set_reset_requested(bool val) { reset_requested = val; }
+
+    // Human Move Queue API
+    void push_human_move(const std::string& move_str) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        human_moves.push_back(move_str);
+    }
+    std::optional<std::string> pop_human_move() {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        if (human_moves.empty()) {
+            return std::nullopt;
+        }
+        std::string mv = human_moves.front();
+        human_moves.pop_front();
+        return mv;
+    }
+    void clear_human_moves() {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        human_moves.clear();
+    }
+
 private:
-    float _search(chess::Board& board, int depth);
+    float _search(chess::Board& board, int depth, std::vector<chess::Move>& pv);
     std::vector<std::pair<chess::Move, float>> _score_moves(chess::Board& board, const chess::Movelist& moves);
     void _td_update(const chess::Board& board, float target_value);
     static std::optional<float> _terminal_value(const chess::Board& board);
@@ -126,6 +220,13 @@ private:
     double backprop_time_secs = 0.0;
     double total_search_time_secs = 0.0;
     double total_post_game_train_time_secs = 0.0;
+
+    std::atomic<bool> paused{false};
+    std::atomic<bool> stop_requested{false};
+    std::atomic<bool> reset_requested{false};
+    std::deque<std::string> human_moves;
+
+    mutable std::recursive_mutex config_mutex;
 };
 
 } // namespace causal_chess
