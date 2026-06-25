@@ -36,6 +36,7 @@ struct SearchConfig {
     double adaptive_influence_ratio = 0.5;
     double nominal_live_lr_scale = 0.05;
     int max_post_game_epochs = 15;
+    bool adaptive_scaling = false;
 };
 
 class Engine {
@@ -84,6 +85,10 @@ public:
     double get_heuristic_weight() const { return config.heuristic_weight; }
     void set_learning_rate(double lr);
     double get_learning_rate() const { return config.learning_rate; }
+    bool get_adaptive_scaling() const { return config.adaptive_scaling; }
+    void set_adaptive_scaling(bool val) { config.adaptive_scaling = val; }
+    double get_live_lr_scale() const { return config.live_lr_scale; }
+    int get_post_game_epochs() const { return config.post_game_epochs; }
     void step_scheduler();
     int get_scheduler_step() const { return scheduler_step; }
 

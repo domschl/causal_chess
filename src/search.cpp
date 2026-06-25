@@ -504,7 +504,7 @@ void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float out
     total_post_game_train_time_secs += elapsed.count();
 
     // Perform hybrid runtime-adaptive scaling (epochs + live_lr_scale) for the next game
-    if (live_updates_this_game > 0 && post_updates_this_game > 0) {
+    if (config.adaptive_scaling && live_updates_this_game > 0 && post_updates_this_game > 0) {
         double updates_per_epoch = static_cast<double>(post_updates_this_game) / config.post_game_epochs;
         if (updates_per_epoch <= 0.0) updates_per_epoch = 16.0;
 
@@ -606,6 +606,7 @@ void Engine::save_checkpoint(const std::string& path) {
         f << "  \"adaptive_influence_ratio\": " << config.adaptive_influence_ratio << ",\n";
         f << "  \"nominal_live_lr_scale\": " << config.nominal_live_lr_scale << ",\n";
         f << "  \"max_post_game_epochs\": " << config.max_post_game_epochs << ",\n";
+        f << "  \"adaptive_scaling\": " << (config.adaptive_scaling ? "true" : "false") << ",\n";
         f << "  \"scheduler_step\": " << scheduler_step << "\n";
         f << "}\n";
     }
@@ -686,6 +687,9 @@ void Engine::load_checkpoint(const std::string& path) {
                     else if (key == "adaptive_influence_ratio") config.adaptive_influence_ratio = std::stod(val_str);
                     else if (key == "nominal_live_lr_scale") config.nominal_live_lr_scale = std::stod(val_str);
                     else if (key == "max_post_game_epochs") config.max_post_game_epochs = std::stoi(val_str);
+                    else if (key == "adaptive_scaling") {
+                        config.adaptive_scaling = (val_str == "true" || val_str == "1");
+                    }
                     else if (key == "scheduler_step") scheduler_step = std::stoi(val_str);
                 } catch (const std::exception& e) {
                     std::cerr << "Warning: Error parsing checkpoint JSON field '" << key << "' with value '" << val_str << "': " << e.what() << "\n";

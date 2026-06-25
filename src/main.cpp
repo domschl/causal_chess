@@ -93,6 +93,7 @@ void print_play_help() {
     std::cout << "  --min-lr <val>         Minimum learning rate threshold (default: 1e-6)\n";
     std::cout << "  --live-lr-scale <val>  Learning rate scale for online TD updates (default: 0.05)\n";
     std::cout << "  --influence-ratio <val> Target influence ratio for adaptive scaling (default: 0.5)\n";
+    std::cout << "  --adaptive-scaling     Enable dynamic/adaptive scaling of live learning rate and epochs (default: disabled)\n";
 }
 
 void print_eval_help() {
@@ -133,6 +134,7 @@ int handle_play(const std::vector<std::string>& args) {
     double min_lr = 1e-6;
     double live_lr_scale = 0.05;
     double influence_ratio = 0.5;
+    bool adaptive_scaling = false;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -178,6 +180,8 @@ int handle_play(const std::vector<std::string>& args) {
             live_lr_scale = std::stod(args[++i]);
         } else if (args[i] == "--influence-ratio" && i + 1 < args.size()) {
             influence_ratio = std::stod(args[++i]);
+        } else if (args[i] == "--adaptive-scaling") {
+            adaptive_scaling = true;
         } else {
             std::cerr << "Unknown play option: " << args[i] << "\n";
             return 1;
@@ -209,6 +213,7 @@ int handle_play(const std::vector<std::string>& args) {
     config.min_learning_rate = min_lr;
     config.live_lr_scale = live_lr_scale;
     config.adaptive_influence_ratio = influence_ratio;
+    config.adaptive_scaling = adaptive_scaling;
 
     Engine engine(config);
 
@@ -255,6 +260,8 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Replay Buffer Size:  " << config.replay_buffer_size << "\n";
     std::cout << "  Replay Batch Size:   " << config.replay_batch_size << "\n";
     std::cout << "  Heuristic Weight (w):" << config.heuristic_weight << "\n";
+    std::cout << "  Live LR Scale:       " << config.live_lr_scale << "\n";
+    std::cout << "  Adaptive Scaling:    " << (config.adaptive_scaling ? "yes" : "no") << "\n";
     std::cout << "  Params:              " << engine.get_model()->param_count() << "\n";
     std::cout << "============================================================\n";
 
