@@ -32,9 +32,9 @@ struct SearchConfig {
     double lr_decay_rate = 0.998;
     int lr_decay_steps = 10;
     double min_learning_rate = 1e-6;
-    double live_lr_scale = 0.05;
+    double live_lr_scale = 1.0;
     double adaptive_influence_ratio = 0.5;
-    double nominal_live_lr_scale = 0.05;
+    double nominal_live_lr_scale = 1.0;
     int max_post_game_epochs = 15;
     bool adaptive_scaling = false;
 };

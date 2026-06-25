@@ -91,7 +91,7 @@ void print_play_help() {
     std::cout << "  --lr-decay-rate <val>  Learning rate decay multiplier (default: 0.998)\n";
     std::cout << "  --lr-decay-steps <n>   Interval of games to decay learning rate (default: 10)\n";
     std::cout << "  --min-lr <val>         Minimum learning rate threshold (default: 1e-6)\n";
-    std::cout << "  --live-lr-scale <val>  Learning rate scale for online TD updates (default: 0.05)\n";
+    std::cout << "  --live-lr-scale <val>  Learning rate scale for online TD updates (default: 1.0)\n";
     std::cout << "  --influence-ratio <val> Target influence ratio for adaptive scaling (default: 0.5)\n";
     std::cout << "  --adaptive-scaling     Enable dynamic/adaptive scaling of live learning rate and epochs (default: disabled)\n";
 }
@@ -132,7 +132,7 @@ int handle_play(const std::vector<std::string>& args) {
     double lr_decay_rate = 0.998;
     int lr_decay_steps = 10;
     double min_lr = 1e-6;
-    double live_lr_scale = 0.05;
+    double live_lr_scale = 1.0;
     double influence_ratio = 0.5;
     bool adaptive_scaling = false;
 
