@@ -10,7 +10,7 @@ Rather than relying on traditional brute-force Alpha-Beta minimax search or offl
 
 Causal Chess features a modern, responsive web dashboard that visualizes training metrics, search analytics (such as Nodes Per Second, NPS), and the actual and "thinking" board states of the engine.
 
-![Causal Chess Web UI](docs/screenshot.jpg)
+<!-- ![Causal Chess Web UI](docs/screenshot.jpg) -->
 
 ### Key Features
 - **In-Situ Online learning**: The evaluation network is trained concurrently during search using Temporal Difference updates on all traversed tree nodes.
