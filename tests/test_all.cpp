@@ -6,6 +6,7 @@
 #include "encoding.hpp"
 #include "model.hpp"
 #include "search.hpp"
+#include "play.hpp"
 
 using namespace causal_chess;
 
@@ -177,6 +178,7 @@ void test_checkpoint_roundtrip() {
 
     // Set custom parameter values
     engine1.set_heuristic_weight(0.1234);
+    engine1.set_adaptive_weight_smoothing(0.85);
     engine1.set_learning_rate(5e-5);
     engine1.step_scheduler(); // scheduler_step becomes 1, decayed lr (4.75e-5) is clamped to min_lr (4.9e-5)
     assert(engine1.get_adaptive_scaling() == false);
@@ -200,6 +202,7 @@ void test_checkpoint_roundtrip() {
 
     // Verify state and hyperparameter loading
     assert(std::abs(engine2.get_heuristic_weight() - 0.1234) < 1e-6);
+    assert(std::abs(engine2.get_adaptive_weight_smoothing() - 0.85) < 1e-6);
     assert(std::abs(engine2.get_learning_rate() - 4.9e-5) < 1e-9);
     assert(engine2.get_scheduler_step() == 1);
     assert(engine2.get_adaptive_scaling() == true);
@@ -389,6 +392,28 @@ void test_top_n_vector_validation_and_search() {
     std::cout << "PASSED\n";
 }
 
+void test_adaptive_weight_controller() {
+    std::cout << "Running: test_adaptive_weight_controller... ";
+
+    SearchConfig config;
+    config.max_depth = 1;
+    config.top_n = 2;
+    config.device = "cpu";
+    config.heuristic_weight = 0.5;
+    config.adaptive_weight_smoothing = 0.9;
+
+    Engine engine(config);
+    self_play_loop(engine, 1, "test_temp_checkpoints", 10, false, false, nullptr);
+
+    // Clean up
+    std::filesystem::remove_all("test_temp_checkpoints");
+
+    double w = engine.get_heuristic_weight();
+    assert(w >= 0.449 && w <= 0.5);
+
+    std::cout << "PASSED\n";
+}
+
 int main() {
     std::cout << "============================================================\n";
     std::cout << "Starting C++ Causal Chess Unit Tests\n";
@@ -405,6 +430,7 @@ int main() {
         test_heuristic_evaluation();
         test_german_notation_preprocessing();
         test_top_n_vector_validation_and_search();
+        test_adaptive_weight_controller();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";

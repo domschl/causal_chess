@@ -295,7 +295,9 @@ PlayStats self_play_loop(
             double target_w = initial_w * std::max(0.0, std::min(1.0, avg_div / 0.15));
             double current_w = engine.get_heuristic_weight();
             double new_w = std::min(current_w, target_w);
-            engine.set_heuristic_weight(new_w);
+            double alpha = engine.get_adaptive_weight_smoothing();
+            double blended_w = alpha * current_w + (1.0 - alpha) * new_w;
+            engine.set_heuristic_weight(blended_w);
         }
     }
 

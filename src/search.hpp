@@ -32,6 +32,7 @@ struct SearchConfig {
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
     double heuristic_weight = 0.5;
+    double adaptive_weight_smoothing = 0.9;
     double lr_decay_rate = 0.998;
     int lr_decay_steps = 10;
     double min_learning_rate = 1e-6;
@@ -92,6 +93,15 @@ public:
     double get_heuristic_weight() const {
         std::lock_guard<std::recursive_mutex> lock(config_mutex);
         return config.heuristic_weight;
+    }
+    
+    void set_adaptive_weight_smoothing(double val) {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        config.adaptive_weight_smoothing = val;
+    }
+    double get_adaptive_weight_smoothing() const {
+        std::lock_guard<std::recursive_mutex> lock(config_mutex);
+        return config.adaptive_weight_smoothing;
     }
     
     void set_learning_rate(double lr);

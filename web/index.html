@@ -630,6 +630,14 @@
 
                 <div class="slider-group">
                     <div class="slider-label">
+                        <span>Heur. Weight Smoothing</span>
+                        <span class="slider-val" id="smoothing-val">0.90</span>
+                    </div>
+                    <input type="range" id="smoothing-slider" min="0.0" max="0.99" step="0.05" value="0.90" oninput="updateSliderLabel('smoothing', parseFloat(this.value).toFixed(2))" onchange="sendConfigUpdate()">
+                </div>
+
+                <div class="slider-group">
+                    <div class="slider-label">
                         <span>Softmax Temp</span>
                         <span class="slider-val" id="temp-val">0.00</span>
                     </div>
@@ -1210,6 +1218,7 @@
                 max_depth: parseInt(document.getElementById('depth-slider').value),
                 top_n: parseInt(document.getElementById('topn-slider').value),
                 heuristic_weight: parseFloat(document.getElementById('weight-slider').value),
+                adaptive_weight_smoothing: parseFloat(document.getElementById('smoothing-slider').value),
                 temperature: parseFloat(document.getElementById('temp-slider').value),
                 learning_rate: parseFloat(formatLogSlider(document.getElementById('lr-slider').value)),
                 adaptive_scaling: document.getElementById('adaptive-toggle').checked
@@ -1255,6 +1264,7 @@
                 max_depth: parseInt(document.getElementById('depth-slider').value),
                 top_n: parseInt(document.getElementById('topn-slider').value),
                 heuristic_weight: parseFloat(document.getElementById('weight-slider').value),
+                adaptive_weight_smoothing: parseFloat(document.getElementById('smoothing-slider').value),
                 temperature: parseFloat(document.getElementById('temp-slider').value),
                 learning_rate: parseFloat(formatLogSlider(document.getElementById('lr-slider').value)),
                 adaptive_scaling: document.getElementById('adaptive-toggle').checked

@@ -685,6 +685,7 @@ void Engine::save_checkpoint(const std::string& path) {
         f << "  \"nominal_live_lr_scale\": " << config.nominal_live_lr_scale << ",\n";
         f << "  \"max_post_game_epochs\": " << config.max_post_game_epochs << ",\n";
         f << "  \"adaptive_scaling\": " << (config.adaptive_scaling ? "true" : "false") << ",\n";
+        f << "  \"adaptive_weight_smoothing\": " << config.adaptive_weight_smoothing << ",\n";
         f << "  \"scheduler_step\": " << scheduler_step << "\n";
         f << "}\n";
     }
@@ -769,6 +770,7 @@ void Engine::load_checkpoint(const std::string& path) {
                     else if (key == "adaptive_scaling") {
                         config.adaptive_scaling = (val_str == "true" || val_str == "1");
                     }
+                    else if (key == "adaptive_weight_smoothing") config.adaptive_weight_smoothing = std::stod(val_str);
                     else if (key == "scheduler_step") scheduler_step = std::stoi(val_str);
                 } catch (const std::exception& e) {
                     std::cerr << "Warning: Error parsing checkpoint JSON field '" << key << "' with value '" << val_str << "': " << e.what() << "\n";

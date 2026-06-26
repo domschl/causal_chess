@@ -70,6 +70,7 @@ void print_play_human_help() {
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
     std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
+    std::cout << "  --adaptive-weight-smoothing <val> Smoothing factor for adaptive heuristic weight controller (default: 0.9)\n";
 }
 
 void print_play_help() {
@@ -90,6 +91,7 @@ void print_play_help() {
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
     std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
+    std::cout << "  --adaptive-weight-smoothing <val> Smoothing factor for adaptive heuristic weight controller (default: 0.9)\n";
     std::cout << "  --lr-decay-rate <val>  Learning rate decay multiplier (default: 0.998)\n";
     std::cout << "  --lr-decay-steps <n>   Interval of games to decay learning rate (default: 10)\n";
     std::cout << "  --min-lr <val>         Minimum learning rate threshold (default: 1e-6)\n";
@@ -131,6 +133,7 @@ int handle_play(const std::vector<std::string>& args) {
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
     double heuristic_weight = 0.5;
+    double adaptive_weight_smoothing = 0.9;
     double lr_decay_rate = 0.998;
     int lr_decay_steps = 10;
     double min_lr = 1e-6;
@@ -172,6 +175,8 @@ int handle_play(const std::vector<std::string>& args) {
             replay_batch_size = std::stoi(args[++i]);
         } else if (args[i] == "--heuristic-weight" && i + 1 < args.size()) {
             heuristic_weight = std::stod(args[++i]);
+        } else if (args[i] == "--adaptive-weight-smoothing" && i + 1 < args.size()) {
+            adaptive_weight_smoothing = std::stod(args[++i]);
         } else if (args[i] == "--lr-decay-rate" && i + 1 < args.size()) {
             lr_decay_rate = std::stod(args[++i]);
         } else if (args[i] == "--lr-decay-steps" && i + 1 < args.size()) {
@@ -210,6 +215,7 @@ int handle_play(const std::vector<std::string>& args) {
     config.replay_buffer_size = replay_buffer_size;
     config.replay_batch_size = replay_batch_size;
     config.heuristic_weight = heuristic_weight;
+    config.adaptive_weight_smoothing = adaptive_weight_smoothing;
     config.lr_decay_rate = lr_decay_rate;
     config.lr_decay_steps = lr_decay_steps;
     config.min_learning_rate = min_lr;
@@ -262,6 +268,7 @@ int handle_play(const std::vector<std::string>& args) {
     std::cout << "  Replay Buffer Size:  " << config.replay_buffer_size << "\n";
     std::cout << "  Replay Batch Size:   " << config.replay_batch_size << "\n";
     std::cout << "  Heuristic Weight (w):" << config.heuristic_weight << "\n";
+    std::cout << "  Weight Smoothing:    " << config.adaptive_weight_smoothing << "\n";
     std::cout << "  Live LR Scale:       " << config.live_lr_scale << "\n";
     std::cout << "  Adaptive Scaling:    " << (config.adaptive_scaling ? "yes" : "no") << "\n";
     std::cout << "  Params:              " << engine.get_model()->param_count() << "\n";
@@ -345,6 +352,9 @@ int handle_play(const std::vector<std::string>& args) {
                         if (cfg.contains("heuristic_weight")) {
                             engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
                         }
+                        if (cfg.contains("adaptive_weight_smoothing")) {
+                            engine.set_adaptive_weight_smoothing(cfg["adaptive_weight_smoothing"].get<double>());
+                        }
                         if (cfg.contains("learning_rate")) {
                             engine.set_learning_rate(cfg["learning_rate"].get<double>());
                         }
@@ -373,6 +383,9 @@ int handle_play(const std::vector<std::string>& args) {
                         }
                         if (cfg.contains("heuristic_weight")) {
                             engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
+                        }
+                        if (cfg.contains("adaptive_weight_smoothing")) {
+                            engine.set_adaptive_weight_smoothing(cfg["adaptive_weight_smoothing"].get<double>());
                         }
                         if (cfg.contains("learning_rate")) {
                             engine.set_learning_rate(cfg["learning_rate"].get<double>());
@@ -536,6 +549,7 @@ int handle_play_human(const std::vector<std::string>& args) {
     std::string color_str = "white";
     std::string checkpoint_path = "";
     double heuristic_weight = 0.5;
+    double adaptive_weight_smoothing = 0.9;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
@@ -553,6 +567,8 @@ int handle_play_human(const std::vector<std::string>& args) {
             device = args[++i];
         } else if (args[i] == "--heuristic-weight" && i + 1 < args.size()) {
             heuristic_weight = std::stod(args[++i]);
+        } else if (args[i] == "--adaptive-weight-smoothing" && i + 1 < args.size()) {
+            adaptive_weight_smoothing = std::stod(args[++i]);
         } else {
             std::cerr << "Unknown play-human option: " << args[i] << "\n";
             return 1;
@@ -581,6 +597,7 @@ int handle_play_human(const std::vector<std::string>& args) {
     config.learning_rate = 0.0; // Freeze learning during human play
     config.device = device;
     config.heuristic_weight = heuristic_weight;
+    config.adaptive_weight_smoothing = adaptive_weight_smoothing;
 
     Engine engine(config);
 
@@ -678,6 +695,9 @@ int handle_play_human(const std::vector<std::string>& args) {
                         if (cfg.contains("heuristic_weight")) {
                             engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
                         }
+                        if (cfg.contains("adaptive_weight_smoothing")) {
+                            engine.set_adaptive_weight_smoothing(cfg["adaptive_weight_smoothing"].get<double>());
+                        }
                         if (cfg.contains("learning_rate")) {
                             engine.set_learning_rate(cfg["learning_rate"].get<double>());
                         }
@@ -706,6 +726,9 @@ int handle_play_human(const std::vector<std::string>& args) {
                         }
                         if (cfg.contains("heuristic_weight")) {
                             engine.set_heuristic_weight(cfg["heuristic_weight"].get<double>());
+                        }
+                        if (cfg.contains("adaptive_weight_smoothing")) {
+                            engine.set_adaptive_weight_smoothing(cfg["adaptive_weight_smoothing"].get<double>());
                         }
                         if (cfg.contains("learning_rate")) {
                             engine.set_learning_rate(cfg["learning_rate"].get<double>());
