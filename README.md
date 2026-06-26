@@ -126,11 +126,11 @@ $$V(s) = (1 - w) \cdot V_{\theta}(s) + w \cdot H(s)$$
 
 Where the handcrafted evaluation $H(s)$ is maps to $[0, 1]$ via the hyperbolic tangent:
 
-$$H(s) = \frac{1}{2} + \frac{1}{2} \tanh \left( \frac{\text{material\_diff} + 0.1 \cdot \text{space\_diff} + 0.05 \cdot \text{move\_count\_diff}}{8.0} \right)$$
+$$H(s) = \frac{1}{2} + \frac{1}{2} \tanh \left( \frac{\text{material-diff} + 0.1 \cdot \text{space-diff} + 0.05 \cdot \text{move-count-diff}}{8.0} \right)$$
 
-- **$\text{material\_diff}$**: Computed dynamically via a Quiescence Search using standard piece values (P=1, N=3, B=3, R=5, Q=9).
-- **$\text{space\_diff}$**: Centroid-weighted square attacks multiplied by a phase factor.
-- **$\text{move\_count\_diff}$**: The degree-of-freedom difference representing mobility: White's possible legal moves minus Black's possible legal moves.
+- $\text{material-diff}$: Computed dynamically via a Quiescence Search using standard piece values (P=1, N=3, B=3, R=5, Q=9).
+- $\text{space-diff}$: Centroid-weighted square attacks multiplied by a phase factor.
+- $\text{move-count-diff}$: The degree-of-freedom difference representing mobility: White's possible legal moves minus Black's possible legal moves.
 
 ### Online Temporal Difference (TD) Learning
 During tree search, each node $s$ evaluates its children $s_i$. The minimax value is computed as:
@@ -149,7 +149,7 @@ Parameters are updated using the Adam optimizer with gradient clipping to preven
 ### Dynamic Tuning & Adaptive Controllers
 - **Heuristic Weight Annealing**: To smoothly transition from handcrafted rules to pure deep learning, the heuristic weight $w$ is updated after each game based on the divergence between the neural network and the heuristic:
   
-  $$w_{t+1} = \alpha \cdot w_t + (1 - \alpha) \cdot \min\left(w_t, w_{\text{initial}} \cdot \max\left(0, \min\left(1, \frac{\text{avg\_div}}{0.15}\right)\right)\right)$$
+  $$w_{t+1} = \alpha \cdot w_t + (1 - \alpha) \cdot \min\left(w_t, w_{\text{initial}} \cdot \max\left(0, \min\left(1, \frac{\text{avg-div}}{0.15}\right)\right)\right)$$
 
 - **Hybrid Runtime-Adaptive Scaling**: Adjusts the post-game training epochs and live learning rate multiplier dynamically based on the ratio of online TD updates to post-game outcome training steps.
 
