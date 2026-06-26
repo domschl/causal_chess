@@ -4,10 +4,17 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include "web_server.hpp"
 #include "nlohmann/json.hpp"
 
 namespace causal_chess {
+
+struct MoveEval {
+    float heuristic;
+    float nn;
+    float final_score;
+};
 
 static std::string safe_move_to_san(const chess::Board& board, chess::Move move) {
     if (move == chess::Move::NO_MOVE) return "";
@@ -81,11 +88,18 @@ PlayStats self_play_loop(
 
         chess::Board board;
         std::vector<std::string> moves_san;
-        std::vector<float> move_evals;
+        std::vector<MoveEval> move_evals;
         std::vector<chess::Board> visited_boards;
         int move_count = 0;
 
-        engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, "", moves_san);
+        float init_h = engine.test_calculate_heuristic(board);
+        float init_nn = 0.0f;
+        if (engine.get_heuristic_weight() < 1.0) {
+            init_nn = engine.evaluate(board);
+        }
+        float init_f = (1.0f - engine.get_heuristic_weight()) * init_nn + engine.get_heuristic_weight() * init_h;
+
+        engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, "", moves_san, init_h, init_nn, init_f);
         // Broadcast starting position
         if (web_server) {
             nlohmann::json pos_msg;
@@ -95,6 +109,9 @@ PlayStats self_play_loop(
             pos_msg["game_index"] = start_game_num + game_num;
             pos_msg["last_move"] = "";
             pos_msg["move_history"] = moves_san;
+            pos_msg["heuristic_score"] = init_h;
+            pos_msg["nn_score"] = init_nn;
+            pos_msg["final_score"] = init_f;
             web_server->broadcast(pos_msg.dump());
         }
 
@@ -117,12 +134,18 @@ PlayStats self_play_loop(
             // Record SAN string before making move
             std::string san = safe_move_to_san(board, best_move);
             moves_san.push_back(san);
-            move_evals.push_back(value);
 
             board.makeMove(best_move);
             move_count++;
 
-            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, san, moves_san);
+            float h_val = engine.test_calculate_heuristic(board);
+            float nn_val = 0.0f;
+            if (engine.get_heuristic_weight() < 1.0) {
+                nn_val = engine.evaluate(board);
+            }
+            move_evals.push_back({h_val, nn_val, value});
+
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, san, moves_san, h_val, nn_val, value);
             // Broadcast move position update
             if (web_server) {
                 nlohmann::json pos_msg;
@@ -132,6 +155,9 @@ PlayStats self_play_loop(
                 pos_msg["game_index"] = start_game_num + game_num;
                 pos_msg["last_move"] = san;
                 pos_msg["move_history"] = moves_san;
+                pos_msg["heuristic_score"] = h_val;
+                pos_msg["nn_score"] = nn_val;
+                pos_msg["final_score"] = value;
                 web_server->broadcast(pos_msg.dump());
             }
         }
@@ -268,9 +294,11 @@ PlayStats self_play_loop(
             std::cout << "[Result \"" << result << "\"]\n\n";
 
             for (size_t i = 0; i < moves_san.size(); ++i) {
-                double pseudo_cp = (move_evals[i] - 0.5) * 20.0;
-                char cp_buf[32];
-                std::snprintf(cp_buf, sizeof(cp_buf), "(%+.2f)", pseudo_cp);
+                double h_cp = (move_evals[i].heuristic - 0.5) * 20.0;
+                double nn_cp = (move_evals[i].nn - 0.5) * 20.0;
+                double f_cp = (move_evals[i].final_score - 0.5) * 20.0;
+                char cp_buf[128];
+                std::snprintf(cp_buf, sizeof(cp_buf), "(H: %+.2f, NN: %+.2f, F: %+.2f)", h_cp, nn_cp, f_cp);
 
                 if (i % 2 == 0) {
                     std::cout << (i / 2 + 1) << ". " << moves_san[i] << " " << cp_buf << " ";
@@ -454,7 +482,14 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
         std::cout << "Enter your moves in SAN (e.g. e4, Nf3) or UCI (e.g. e2e4) format.\n";
     }
 
-    engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, "", moves_san);
+    float init_h = engine.test_calculate_heuristic(board);
+    float init_nn = 0.0f;
+    if (engine.get_heuristic_weight() < 1.0) {
+        init_nn = engine.evaluate(board);
+    }
+    float init_f = (1.0f - engine.get_heuristic_weight()) * init_nn + engine.get_heuristic_weight() * init_h;
+
+    engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, "", moves_san, init_h, init_nn, init_f);
     if (web_server) {
         engine.clear_human_moves();
         nlohmann::json pos_msg;
@@ -464,6 +499,9 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
         pos_msg["game_index"] = 0;
         pos_msg["last_move"] = "";
         pos_msg["move_history"] = moves_san;
+        pos_msg["heuristic_score"] = init_h;
+        pos_msg["nn_score"] = init_nn;
+        pos_msg["final_score"] = init_f;
         web_server->broadcast(pos_msg.dump());
     }
 
@@ -558,11 +596,25 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
             }
 
             std::string san = safe_move_to_san(board, move);
-            std::cout << "You played: " << san << "\n";
             board.makeMove(move);
             moves_san.push_back(san);
 
-            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san, moves_san);
+            float h_val = engine.test_calculate_heuristic(board);
+            float nn_val = 0.0f;
+            if (engine.get_heuristic_weight() < 1.0) {
+                nn_val = engine.evaluate(board);
+            }
+            float f_val = (1.0f - engine.get_heuristic_weight()) * nn_val + engine.get_heuristic_weight() * h_val;
+            double h_cp = (h_val - 0.5) * 20.0;
+            double nn_cp = (nn_val - 0.5) * 20.0;
+            double f_cp = (f_val - 0.5) * 20.0;
+
+            std::cout << "You played: " << san 
+                      << " (H: " << std::showpos << std::fixed << std::setprecision(2) << h_cp
+                      << ", NN: " << nn_cp
+                      << ", F: " << f_cp << ")" << std::noshowpos << "\n";
+
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san, moves_san, h_val, nn_val, f_val);
             if (web_server) {
                 nlohmann::json pos_msg;
                 pos_msg["type"] = "position";
@@ -571,6 +623,9 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
                 pos_msg["game_index"] = 0;
                 pos_msg["last_move"] = san;
                 pos_msg["move_history"] = moves_san;
+                pos_msg["heuristic_score"] = h_val;
+                pos_msg["nn_score"] = nn_val;
+                pos_msg["final_score"] = f_val;
                 web_server->broadcast(pos_msg.dump());
             }
         } else {
@@ -582,11 +637,24 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
             }
 
             std::string san = safe_move_to_san(board, best_move);
-            std::cout << "Model played: " << san << " (eval: " << value << ")\n";
             board.makeMove(best_move);
             moves_san.push_back(san);
 
-            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san, moves_san);
+            float h_val = engine.test_calculate_heuristic(board);
+            float nn_val = 0.0f;
+            if (engine.get_heuristic_weight() < 1.0) {
+                nn_val = engine.evaluate(board);
+            }
+            double h_cp = (h_val - 0.5) * 20.0;
+            double nn_cp = (nn_val - 0.5) * 20.0;
+            double f_cp = (value - 0.5) * 20.0;
+
+            std::cout << "Model played: " << san 
+                      << " (H: " << std::showpos << std::fixed << std::setprecision(2) << h_cp
+                      << ", NN: " << nn_cp
+                      << ", F: " << f_cp << ")" << std::noshowpos << "\n";
+
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san, moves_san, h_val, nn_val, value);
             if (web_server) {
                 nlohmann::json pos_msg;
                 pos_msg["type"] = "position";
@@ -595,6 +663,9 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
                 pos_msg["game_index"] = 0;
                 pos_msg["last_move"] = san;
                 pos_msg["move_history"] = moves_san;
+                pos_msg["heuristic_score"] = h_val;
+                pos_msg["nn_score"] = nn_val;
+                pos_msg["final_score"] = value;
                 web_server->broadcast(pos_msg.dump());
             }
         }

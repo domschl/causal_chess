@@ -422,7 +422,8 @@ int handle_play(const std::vector<std::string>& args) {
                     std::string fen, turn, last_move;
                     int game_index;
                     std::vector<std::string> move_history;
-                    engine.get_active_position_with_history(fen, turn, game_index, last_move, move_history);
+                    float h_score = 0.5f, nn_score = 0.5f, f_score = 0.5f;
+                    engine.get_active_position_with_history_and_eval(fen, turn, game_index, last_move, move_history, h_score, nn_score, f_score);
                     nlohmann::json pos_msg;
                     pos_msg["type"] = "position";
                     pos_msg["fen"] = fen;
@@ -430,6 +431,9 @@ int handle_play(const std::vector<std::string>& args) {
                     pos_msg["game_index"] = game_index;
                     pos_msg["last_move"] = last_move;
                     pos_msg["move_history"] = move_history;
+                    pos_msg["heuristic_score"] = h_score;
+                    pos_msg["nn_score"] = nn_score;
+                    pos_msg["final_score"] = f_score;
                     web_server.broadcast(pos_msg.dump());
                 } else if (action == "human_move") {
                     if (js.contains("move")) {
@@ -781,7 +785,8 @@ int handle_play_human(const std::vector<std::string>& args) {
                     std::string fen, turn, last_move;
                     int game_index;
                     std::vector<std::string> move_history;
-                    engine.get_active_position_with_history(fen, turn, game_index, last_move, move_history);
+                    float h_score = 0.5f, nn_score = 0.5f, f_score = 0.5f;
+                    engine.get_active_position_with_history_and_eval(fen, turn, game_index, last_move, move_history, h_score, nn_score, f_score);
                     nlohmann::json pos_msg;
                     pos_msg["type"] = "position";
                     pos_msg["fen"] = fen;
@@ -789,6 +794,9 @@ int handle_play_human(const std::vector<std::string>& args) {
                     pos_msg["game_index"] = game_index;
                     pos_msg["last_move"] = last_move;
                     pos_msg["move_history"] = move_history;
+                    pos_msg["heuristic_score"] = h_score;
+                    pos_msg["nn_score"] = nn_score;
+                    pos_msg["final_score"] = f_score;
                     web_server.broadcast(pos_msg.dump());
                 } else if (action == "human_move") {
                     if (js.contains("move")) {

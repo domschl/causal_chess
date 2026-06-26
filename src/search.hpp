@@ -123,13 +123,16 @@ public:
         return _calculate_heuristic(board);
     }
 
-    void set_active_position(const std::string& fen, const std::string& turn, int game_index, const std::string& last_move, const std::vector<std::string>& move_history = {}) {
+    void set_active_position(const std::string& fen, const std::string& turn, int game_index, const std::string& last_move, const std::vector<std::string>& move_history = {}, float h_score = 0.5f, float nn_score = 0.5f, float f_score = 0.5f) {
         std::lock_guard<std::mutex> lock(fen_mutex);
         active_fen = fen;
         active_turn = turn;
         active_game_index = game_index;
         active_last_move = last_move;
         active_move_history = move_history;
+        active_heuristic_score = h_score;
+        active_nn_score = nn_score;
+        active_final_score = f_score;
     }
 
     void get_active_position(std::string& fen, std::string& turn, int& game_index, std::string& last_move) const {
@@ -147,6 +150,18 @@ public:
         game_index = active_game_index;
         last_move = active_last_move;
         move_history = active_move_history;
+    }
+
+    void get_active_position_with_history_and_eval(std::string& fen, std::string& turn, int& game_index, std::string& last_move, std::vector<std::string>& move_history, float& h_score, float& nn_score, float& f_score) const {
+        std::lock_guard<std::mutex> lock(fen_mutex);
+        fen = active_fen;
+        turn = active_turn;
+        game_index = active_game_index;
+        last_move = active_last_move;
+        move_history = active_move_history;
+        h_score = active_heuristic_score;
+        nn_score = active_nn_score;
+        f_score = active_final_score;
     }
     
     double get_live_lr_scale() const {
@@ -271,6 +286,9 @@ private:
     int active_game_index = 0;
     std::string active_last_move = "";
     std::vector<std::string> active_move_history;
+    float active_heuristic_score = 0.5f;
+    float active_nn_score = 0.5f;
+    float active_final_score = 0.5f;
     mutable std::mutex fen_mutex;
 
     mutable std::recursive_mutex config_mutex;

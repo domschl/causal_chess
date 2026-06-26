@@ -400,8 +400,10 @@
         }
 
         .game-info-bar {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px 16px;
             background: rgba(0,0,0,0.3);
             padding: 10px 16px;
             border-radius: 10px;
@@ -413,8 +415,6 @@
         .game-info-bar > div {
             text-align: left;
             white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         /* Candidate Moves panel */
@@ -478,6 +478,15 @@
             text-overflow: ellipsis;
         }
 
+        .candidate-details {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-family: monospace;
+            display: flex;
+            gap: 12px;
+            margin-top: 1px;
+        }
+
         /* Performance & Stats Panel */
         .metrics-grid {
             display: grid;
@@ -515,7 +524,7 @@
 
         .chart-container {
             position: relative;
-            height: 120px;
+            height: 180px;
             background: rgba(0, 0, 0, 0.2);
             border-radius: 12px;
             padding: 8px;
@@ -754,7 +763,7 @@
                         <span>Learning Rate</span>
                         <span class="slider-val" id="lr-val">1e-4</span>
                     </div>
-                    <input type="range" id="lr-slider" min="-6" max="-3" step="0.5" value="-4" oninput="updateSliderLabel('lr', formatLogSlider(this.value))" onchange="sendConfigUpdate()">
+                    <input type="range" id="lr-slider" min="-6" max="-3.5" step="0.5" value="-4" oninput="updateSliderLabel('lr', formatLogSlider(this.value))" onchange="sendConfigUpdate()">
                 </div>
 
                 <div class="switch-group">
@@ -775,6 +784,7 @@
                         <div>Game: <span id="game-index" class="highlight">-</span></div>
                         <div>Turn: <span id="game-turn" class="highlight">-</span></div>
                         <div>Last Move: <span id="last-move" class="highlight">-</span></div>
+                        <div>Eval: <span id="game-eval" class="highlight">-</span></div>
                     </div>
                     <div class="chessboard-card">
                         <div class="chessboard-container">
@@ -838,6 +848,10 @@
                     <canvas id="nps-chart"></canvas>
                 </div>
 
+                <div class="chart-container" style="margin-top: 10px;">
+                    <canvas id="eval-chart"></canvas>
+                </div>
+
                 <h2>System Log</h2>
                 <div class="console-panel">
                     <div class="console-header">
@@ -879,6 +893,7 @@
         const gameIndexEl = document.getElementById('game-index');
         const gameTurnEl = document.getElementById('game-turn');
         const lastMoveEl = document.getElementById('last-move');
+        const gameEvalEl = document.getElementById('game-eval');
 
         const thinkDepthEl = document.getElementById('think-depth');
         const thinkNpsEl = document.getElementById('think-nps');
@@ -898,6 +913,7 @@
         let activeFEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
         let activeTurn = 'w';
         let selectedSquare = null;
+        let currentChartGameIndex = -1;
 
         // Initialize Boards with static squares
         function initializeBoard(boardElement, clickCallback = null) {
@@ -1107,9 +1123,13 @@
         }
 
         // Charts
-        let lossChart, npsChart;
+        let lossChart, npsChart, evalChart;
         const lossData = [], lossLabels = [];
         const npsData = [], npsLabels = [];
+        const evalLabels = [];
+        const heuristicEvalData = [];
+        const nnEvalData = [];
+        const finalEvalData = [];
 
         function initCharts() {
             const lossCtx = document.getElementById('loss-chart').getContext('2d');
@@ -1169,6 +1189,77 @@
                     }
                 }
             });
+
+            const evalCtx = document.getElementById('eval-chart').getContext('2d');
+            evalChart = new Chart(evalCtx, {
+                type: 'line',
+                data: {
+                    labels: evalLabels,
+                    datasets: [
+                        {
+                            label: 'H',
+                            data: heuristicEvalData,
+                            borderColor: '#ffaa00',
+                            backgroundColor: 'rgba(255, 170, 0, 0.05)',
+                            tension: 0.3,
+                            fill: false,
+                            borderWidth: 1.5,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'NN',
+                            data: nnEvalData,
+                            borderColor: '#ff00aa',
+                            backgroundColor: 'rgba(255, 0, 170, 0.05)',
+                            tension: 0.3,
+                            fill: false,
+                            borderWidth: 1.5,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Sc',
+                            data: finalEvalData,
+                            borderColor: '#00ff66',
+                            backgroundColor: 'rgba(0, 255, 102, 0.05)',
+                            tension: 0.3,
+                            fill: false,
+                            borderWidth: 2,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    animation: false,
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { 
+                            grid: { display: false }, 
+                            ticks: { color: '#64748b', font: { size: 9 } } 
+                        },
+                        y: { 
+                            grid: { color: 'rgba(255,255,255,0.03)' }, 
+                            ticks: { 
+                                color: '#94a3b8',
+                                callback: function(value) {
+                                    return (value >= 0 ? '+' : '') + value.toFixed(1);
+                                }
+                            } 
+                        }
+                    },
+                    plugins: {
+                        legend: { 
+                            labels: { color: '#e2e8f0', font: { size: 9 } } 
+                        },
+                        title: {
+                            display: true,
+                            text: 'Current Game Evaluations (White-Relative)',
+                            color: '#e2e8f0',
+                            font: { size: 10, weight: 'bold' }
+                        }
+                    }
+                }
+            });
         }
         initCharts();
 
@@ -1224,6 +1315,19 @@
                         gameTurnEl.textContent = data.turn === 'w' ? 'White' : 'Black';
                         lastMoveEl.textContent = data.last_move || 'None';
                         
+                        if (data.heuristic_score !== undefined && data.nn_score !== undefined && data.final_score !== undefined) {
+                            const h_cp = (data.heuristic_score - 0.5) * 20.0;
+                            const nn_cp = (data.nn_score - 0.5) * 20.0;
+                            const f_cp = (data.final_score - 0.5) * 20.0;
+                            const formatCp = (val) => {
+                                const formatted = val.toFixed(2);
+                                return val >= 0 ? '+' + formatted : formatted;
+                            };
+                            gameEvalEl.textContent = `H: ${formatCp(h_cp)} | NN: ${formatCp(nn_cp)} | F: ${formatCp(f_cp)}`;
+                        } else {
+                            gameEvalEl.textContent = '-';
+                        }
+                        
                         // Sync thinking board with live board state instead of clearing it, and reset highlights
                         renderBoardState(activeFEN, thinkingBoardEl);
                         document.querySelectorAll('#thinking-board .square').forEach(sq => {
@@ -1231,6 +1335,40 @@
                         });
                         announcerEl.textContent = '';
                         renderMoveHistory(data.move_history || []);
+
+                        // Check if we need to reset the eval chart
+                        const isNewGame = (data.game_index !== currentChartGameIndex) || (!data.move_history || data.move_history.length === 0);
+                        if (isNewGame) {
+                            currentChartGameIndex = data.game_index;
+                            evalLabels.length = 0;
+                            heuristicEvalData.length = 0;
+                            nnEvalData.length = 0;
+                            finalEvalData.length = 0;
+                        }
+
+                        // Determine the label for this data point (ply/half-move index)
+                        let label = "0";
+                        if (data.move_history && data.move_history.length > 0) {
+                            label = data.move_history.length.toString();
+                        }
+
+                        // Add evaluation data point if available
+                        if (data.heuristic_score !== undefined && data.nn_score !== undefined && data.final_score !== undefined) {
+                            // If we already have this move label in the chart, don't duplicate it
+                            if (evalLabels.length === 0 || evalLabels[evalLabels.length - 1] !== label) {
+                                const h_cp = (data.heuristic_score - 0.5) * 20.0;
+                                const nn_cp = (data.nn_score - 0.5) * 20.0;
+                                const f_cp = (data.final_score - 0.5) * 20.0;
+
+                                evalLabels.push(label);
+                                heuristicEvalData.push(h_cp);
+                                nnEvalData.push(nn_cp);
+                                finalEvalData.push(f_cp);
+                                if (evalChart) {
+                                    evalChart.update();
+                                }
+                            }
+                        }
                     } 
                     else if (data.type === 'config') {
                         const cfg = data.config;
@@ -1399,7 +1537,23 @@
                 pvDiv.className = 'candidate-pv';
                 pvDiv.textContent = `PV: ${cand.pv ? cand.pv.join(' ') : 'none'}`;
 
+                const detailsDiv = document.createElement('div');
+                detailsDiv.className = 'candidate-details';
+                if (cand.heuristic_score !== undefined && cand.nn_score !== undefined) {
+                    const h_cp = (cand.heuristic_score - 0.5) * 20.0;
+                    const nn_cp = (cand.nn_score - 0.5) * 20.0;
+                    const f_cp = (cand.score - 0.5) * 20.0;
+                    const formatCp = (val) => {
+                        const formatted = val.toFixed(2);
+                        return val >= 0 ? '+' + formatted : formatted;
+                    };
+                    detailsDiv.textContent = `H: ${formatCp(h_cp)} | NN: ${formatCp(nn_cp)} | F: ${formatCp(f_cp)}`;
+                } else {
+                    detailsDiv.textContent = 'H: - | NN: - | F: -';
+                }
+
                 item.appendChild(header);
+                item.appendChild(detailsDiv);
                 item.appendChild(pvDiv);
 
                 item.addEventListener('mouseenter', () => {

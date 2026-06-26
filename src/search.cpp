@@ -39,6 +39,9 @@ static torch::Device resolve_device(const std::string& device_str) {
 Engine::Engine(const SearchConfig& config, ValueNetwork model)
     : config(config),
       device(resolve_device(config.device)) {
+    if (this->config.learning_rate > 3e-4) {
+        this->config.learning_rate = 3e-4;
+    }
     if (model.is_empty()) {
         this->model = ValueNetwork(15);
     } else {
@@ -49,7 +52,7 @@ Engine::Engine(const SearchConfig& config, ValueNetwork model)
 
     optimizer = std::make_unique<torch::optim::Adam>(
         this->model->parameters(),
-        torch::optim::AdamOptions(config.learning_rate)
+        torch::optim::AdamOptions(this->config.learning_rate)
     );
 }
 
@@ -131,6 +134,15 @@ std::pair<chess::Move, float> Engine::search_position(chess::Board& board, std::
         pv_json.push_back(safe_move_to_san(board, ms.first));
         chess::Board board_copy = board;
         board_copy.makeMove(ms.first);
+
+        float h_val = _calculate_heuristic(board_copy);
+        float nn_val = 0.0f;
+        if (config.heuristic_weight < 1.0) {
+            nn_val = evaluate(board_copy);
+        }
+        candidate["heuristic_score"] = h_val;
+        candidate["nn_score"] = nn_val;
+
         for (const auto& pv_move : child_pv) {
             pv_json.push_back(safe_move_to_san(board_copy, pv_move));
             board_copy.makeMove(pv_move);
@@ -640,6 +652,9 @@ static std::string get_json_path(const std::string& path) {
 
 void Engine::set_learning_rate(double lr) {
     std::lock_guard<std::recursive_mutex> lock(config_mutex);
+    if (lr > 3e-4) {
+        lr = 3e-4;
+    }
     config.learning_rate = lr;
     for (auto& group : optimizer->param_groups()) {
         static_cast<torch::optim::AdamOptions&>(group.options()).lr(lr);
