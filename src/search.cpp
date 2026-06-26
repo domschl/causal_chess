@@ -905,7 +905,26 @@ float Engine::_calculate_heuristic(const chess::Board& board) {
     chess::Board board_copy = board;
     float material_diff = _quiescence_search(board_copy, -1e9f, 1e9f, 0);
     float space_diff = _space_control_score(board);
-    float total_units = material_diff + 0.1f * space_diff;
+
+    // Calculate degree of freedom (move count) relative to White
+    chess::Movelist active_moves;
+    chess::movegen::legalmoves(active_moves, board);
+    int active_count = active_moves.size();
+
+    chess::Board temp_board = board;
+    temp_board.makeNullMove();
+    chess::Movelist passive_moves;
+    chess::movegen::legalmoves(passive_moves, temp_board);
+    int passive_count = passive_moves.size();
+
+    float move_count = 0.0f;
+    if (board.sideToMove() == chess::Color::WHITE) {
+        move_count = static_cast<float>(active_count - passive_count);
+    } else {
+        move_count = static_cast<float>(passive_count - active_count);
+    }
+
+    float total_units = material_diff + 0.1f * space_diff + 0.05f * move_count;
     return 0.5f + 0.5f * std::tanh(total_units / 8.0f);
 }
 

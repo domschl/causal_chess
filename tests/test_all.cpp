@@ -414,6 +414,27 @@ void test_adaptive_weight_controller() {
     std::cout << "PASSED\n";
 }
 
+void test_move_count_heuristic() {
+    std::cout << "Running: test_move_count_heuristic... ";
+
+    SearchConfig config;
+    Engine engine(config);
+
+    // Board 1: Centralized, highly mobile White Queen on d4 (high degree of freedom)
+    chess::Board board_mobile("8/8/8/3Q4/8/8/8/k3K3 w - - 0 1");
+
+    // Board 2: Cornered White Queen on a8 (lower degree of freedom)
+    chess::Board board_blocked("Q7/8/8/8/8/8/8/k3K3 w - - 0 1");
+
+    float val_mobile = engine.test_calculate_heuristic(board_mobile);
+    float val_blocked = engine.test_calculate_heuristic(board_blocked);
+
+    // The mobile queen position should have a higher heuristic score
+    assert(val_mobile > val_blocked);
+
+    std::cout << "PASSED\n";
+}
+
 int main() {
     std::cout << "============================================================\n";
     std::cout << "Starting C++ Causal Chess Unit Tests\n";
@@ -431,6 +452,7 @@ int main() {
         test_german_notation_preprocessing();
         test_top_n_vector_validation_and_search();
         test_adaptive_weight_controller();
+        test_move_count_heuristic();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";

@@ -119,6 +119,10 @@ public:
         config.adaptive_scaling = val;
     }
     
+    float test_calculate_heuristic(const chess::Board& board) {
+        return _calculate_heuristic(board);
+    }
+    
     double get_live_lr_scale() const {
         std::lock_guard<std::recursive_mutex> lock(config_mutex);
         return config.live_lr_scale;
