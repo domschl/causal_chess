@@ -70,7 +70,7 @@ void print_play_human_help() {
     std::cout << "  --checkpoint <path>  Specific checkpoint file to load\n";
     std::cout << "  --device <str>       Torch device: cpu, mps, cuda, auto (default: cpu)\n";
     std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
-    std::cout << "  --adaptive-weight-smoothing <val> Smoothing factor for adaptive heuristic weight controller (default: 0.9)\n";
+    std::cout << "  --adaptive-weight-smoothing <val> Smoothing factor for adaptive heuristic weight controller (default: 0.8)\n";
 }
 
 void print_play_help() {
@@ -91,7 +91,7 @@ void print_play_help() {
     std::cout << "  --checkpoint <path>    Specific checkpoint file to load\n";
     std::cout << "  --fresh                Ignore existing checkpoints and start fresh\n";
     std::cout << "  --heuristic-weight <val> Weight of quiescent material/space heuristic in [0, 1] (default: 0.5)\n";
-    std::cout << "  --adaptive-weight-smoothing <val> Smoothing factor for adaptive heuristic weight controller (default: 0.9)\n";
+    std::cout << "  --adaptive-weight-smoothing <val> Smoothing factor for adaptive heuristic weight controller (default: 0.8)\n";
     std::cout << "  --lr-decay-rate <val>  Learning rate decay multiplier (default: 0.998)\n";
     std::cout << "  --lr-decay-steps <n>   Interval of games to decay learning rate (default: 10)\n";
     std::cout << "  --min-lr <val>         Minimum learning rate threshold (default: 1e-6)\n";
@@ -133,7 +133,7 @@ int handle_play(const std::vector<std::string>& args) {
     int replay_buffer_size = 5000;
     int replay_batch_size = 128;
     double heuristic_weight = 0.5;
-    double adaptive_weight_smoothing = 0.9;
+    double adaptive_weight_smoothing = 0.8;
     double lr_decay_rate = 0.998;
     int lr_decay_steps = 10;
     double min_lr = 1e-6;
@@ -549,7 +549,7 @@ int handle_play_human(const std::vector<std::string>& args) {
     std::string color_str = "white";
     std::string checkpoint_path = "";
     double heuristic_weight = 0.5;
-    double adaptive_weight_smoothing = 0.9;
+    double adaptive_weight_smoothing = 0.8;
 
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i] == "--help" || args[i] == "-h") {
