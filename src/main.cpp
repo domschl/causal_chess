@@ -12,9 +12,10 @@
 
 using namespace causal_chess;
 
-static void broadcast_config(Engine& engine, WebServer& web_server) {
+static void broadcast_config(Engine& engine, WebServer& web_server, const std::string& active_mode) {
     nlohmann::json msg;
     msg["type"] = "config";
+    msg["mode"] = active_mode;
     nlohmann::json cfg;
     cfg["max_depth"] = engine.get_max_depth();
     cfg["top_n"] = engine.get_top_n();
@@ -384,7 +385,7 @@ int handle_play(const std::vector<std::string>& args) {
 
                     std::cout << "  🚀 Starting session (" << mode << ") via Web Interface\n";
                     start_game_thread(mode);
-                    broadcast_config(engine, web_server);
+                    broadcast_config(engine, web_server, active_mode);
                 } else if (action == "update_config") {
                     if (js.contains("config")) {
                         auto cfg = js["config"];
@@ -415,9 +416,9 @@ int handle_play(const std::vector<std::string>& args) {
                         }
                     }
                     std::cout << "  🔧 Configuration updated via Web Interface\n";
-                    broadcast_config(engine, web_server);
+                    broadcast_config(engine, web_server, active_mode);
                 } else if (action == "get_config") {
-                    broadcast_config(engine, web_server);
+                    broadcast_config(engine, web_server, active_mode);
                     std::string fen, turn, last_move;
                     int game_index;
                     engine.get_active_position(fen, turn, game_index, last_move);
@@ -741,7 +742,7 @@ int handle_play_human(const std::vector<std::string>& args) {
 
                     std::cout << "  🚀 Starting session (" << mode << ") via Web Interface\n";
                     start_game_thread(mode);
-                    broadcast_config(engine, web_server);
+                    broadcast_config(engine, web_server, active_mode);
                 } else if (action == "update_config") {
                     if (js.contains("config")) {
                         auto cfg = js["config"];
@@ -772,9 +773,9 @@ int handle_play_human(const std::vector<std::string>& args) {
                         }
                     }
                     std::cout << "  🔧 Configuration updated via Web Interface\n";
-                    broadcast_config(engine, web_server);
+                    broadcast_config(engine, web_server, active_mode);
                 } else if (action == "get_config") {
-                    broadcast_config(engine, web_server);
+                    broadcast_config(engine, web_server, active_mode);
                     std::string fen, turn, last_move;
                     int game_index;
                     engine.get_active_position(fen, turn, game_index, last_move);

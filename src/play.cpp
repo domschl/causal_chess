@@ -306,6 +306,7 @@ PlayStats self_play_loop(
         if (web_server) {
             nlohmann::json msg;
             msg["type"] = "config";
+            msg["mode"] = "self_play";
             nlohmann::json cfg;
             cfg["max_depth"] = engine.get_max_depth();
             cfg["top_n"] = engine.get_top_n();

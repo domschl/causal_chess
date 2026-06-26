@@ -378,6 +378,7 @@
         }
 
         .piece {
+            font-family: 'Noto Sans Symbols', sans-serif;
             font-size: 2rem;
             display: flex;
             justify-content: center;
@@ -569,12 +570,96 @@
         .console-msg.success { color: var(--neon-green); }
         .console-msg.error { color: var(--neon-red); }
         .console-msg.warn { color: var(--neon-amber); }
+
+        /* Promotion Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .modal-content {
+            background: rgba(30, 30, 40, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            max-width: 320px;
+            width: 90%;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+        .modal-content h3 {
+            color: #fff;
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1.3rem;
+        }
+        .modal-content p {
+            color: #ccc;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
+        .promotion-choices {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .promo-btn {
+            font-family: 'Outfit', 'Noto Sans Symbols', sans-serif;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .promo-btn:hover {
+            background: rgba(0, 200, 255, 0.2);
+            border-color: #00c8ff;
+            transform: translateY(-2px);
+        }
+        .promo-cancel-btn {
+            background: transparent;
+            border: none;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            transition: color 0.2s ease;
+        }
+        .promo-cancel-btn:hover {
+            color: #ff4d4d;
+        }
     </style>
-    <!-- Google Fonts & Chart.js -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Local Fonts & Chart.js -->
+    <link href="fonts.css" rel="stylesheet">
+    <script src="chart.js"></script>
 </head>
 <body>
 
@@ -742,6 +827,21 @@
         </div>
     </div>
 
+    <!-- Promotion Selection Modal -->
+    <div id="promotion-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Pawn Promotion</h3>
+            <p>Select a piece to promote to:</p>
+            <div class="promotion-choices">
+                <button class="promo-btn" data-piece="q">♛ Queen</button>
+                <button class="promo-btn" data-piece="r">♜ Rook</button>
+                <button class="promo-btn" data-piece="b">♝ Bishop</button>
+                <button class="promo-btn" data-piece="n">♞ Knight</button>
+            </div>
+            <button class="promo-cancel-btn">Cancel</button>
+        </div>
+    </div>
+
     <script>
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
@@ -825,12 +925,47 @@
             return num.toString();
         }
 
-        function changeMode(mode) {
-            document.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
-            document.getElementById(`mode-${mode}`).classList.add('active');
-            activeMode = mode;
-            log(`Mode pre-selected: ${mode}. Click 'Start' to apply.`, 'warn');
+        function changeMode(mode, fromServer = false) {
+            console.log(`changeMode called: mode=${mode}, fromServer=${fromServer}`);
+            const btn = document.getElementById(`mode-${mode}`);
+            if (btn) {
+                document.querySelectorAll('.mode-tab').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                activeMode = mode;
+                if (!fromServer) {
+                    log(`Mode pre-selected: ${mode}. Click 'Start' to apply.`, 'warn');
+                }
+            } else {
+                console.warn(`changeMode: mode button for '${mode}' not found.`);
+            }
         }
+
+        // Promotion selection modal helper functions and setup
+        let pendingMove = null;
+
+        function showPromotionModal(uciMove) {
+            pendingMove = uciMove;
+            document.getElementById('promotion-modal').classList.add('active');
+        }
+
+        function hidePromotionModal() {
+            pendingMove = null;
+            document.getElementById('promotion-modal').classList.remove('active');
+        }
+
+        document.querySelectorAll('.promo-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (pendingMove) {
+                    const choice = btn.dataset.piece;
+                    sendMove(pendingMove + choice);
+                    hidePromotionModal();
+                }
+            });
+        });
+
+        document.querySelector('.promo-cancel-btn').addEventListener('click', () => {
+            hidePromotionModal();
+        });
 
         // FEN Parsing & Piece Placement
         function getSquareName(r, f) {
@@ -924,7 +1059,14 @@
                 // Send move UCI to server
                 if (sourceSquareName !== clickedSquareName) {
                     const uciMove = sourceSquareName + clickedSquareName;
-                    sendMove(uciMove);
+                    const movingPiece = prevEl ? prevEl.dataset.piece : null;
+                    const isPromotion = (movingPiece === 'P' && prevCoords.r === 1 && r === 0) ||
+                                        (movingPiece === 'p' && prevCoords.r === 6 && r === 7);
+                    if (isPromotion) {
+                        showPromotionModal(uciMove);
+                    } else {
+                        sendMove(uciMove);
+                    }
                 }
             } else {
                 // Select only if clicking own piece
@@ -1067,6 +1209,9 @@
                     } 
                     else if (data.type === 'config') {
                         const cfg = data.config;
+                        if (data.mode) {
+                            changeMode(data.mode, true);
+                        }
                         if (cfg) {
                             if (cfg.max_depth !== undefined) {
                                 document.getElementById('depth-slider').value = cfg.max_depth;
@@ -1335,7 +1480,12 @@
             log(`Dispatched move input: ${uciMove}`, 'info');
         }
 
-        setTimeout(connect, 3000);
+        // Render initial starting boards immediately on load
+        renderBoardState(activeFEN, liveBoardEl);
+        renderBoardState(activeFEN, thinkingBoardEl);
+
+        // Connect WebSocket immediately
+        connect();
     </script>
 </body>
 </html>
