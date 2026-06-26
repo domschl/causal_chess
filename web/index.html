@@ -378,7 +378,7 @@
         }
 
         .piece {
-            font-family: 'Noto Sans Symbols', sans-serif;
+            font-family: 'Noto Sans Symbols', 'NotoSansSymbols', 'NotoSanSymbols', 'Noto Sans Symbols 2', 'NotoSansSymbols2', sans-serif;
             font-size: 2rem;
             display: flex;
             justify-content: center;
@@ -625,7 +625,7 @@
             margin-bottom: 16px;
         }
         .promo-btn {
-            font-family: 'Outfit', 'Noto Sans Symbols', sans-serif;
+            font-family: 'Outfit', 'Noto Sans Symbols', 'NotoSansSymbols', 'NotoSanSymbols', 'Noto Sans Symbols 2', 'NotoSansSymbols2', sans-serif;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             color: #fff;
@@ -833,10 +833,10 @@
             <h3>Pawn Promotion</h3>
             <p>Select a piece to promote to:</p>
             <div class="promotion-choices">
-                <button class="promo-btn" data-piece="q">♛ Queen</button>
-                <button class="promo-btn" data-piece="r">♜ Rook</button>
-                <button class="promo-btn" data-piece="b">♝ Bishop</button>
-                <button class="promo-btn" data-piece="n">♞ Knight</button>
+                <button class="promo-btn" data-piece="q">♛&#xFE0E; Queen</button>
+                <button class="promo-btn" data-piece="r">♜&#xFE0E; Rook</button>
+                <button class="promo-btn" data-piece="b">♝&#xFE0E; Bishop</button>
+                <button class="promo-btn" data-piece="n">♞&#xFE0E; Knight</button>
             </div>
             <button class="promo-cancel-btn">Cancel</button>
         </div>
@@ -865,8 +865,8 @@
         const drawsEl = document.getElementById('draws');
 
         const pieceSymbols = {
-            'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
-            'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚'
+            'P': '♙\uFE0E', 'N': '♘\uFE0E', 'B': '♗\uFE0E', 'R': '♖\uFE0E', 'Q': '♕\uFE0E', 'K': '♔\uFE0E',
+            'p': '♟\uFE0E', 'n': '♞\uFE0E', 'b': '♝\uFE0E', 'r': '♜\uFE0E', 'q': '♛\uFE0E', 'k': '♚\uFE0E'
         };
 
         let activeMode = 'self_play';
