@@ -12,6 +12,22 @@
 
 using namespace causal_chess;
 
+static void broadcast_config(Engine& engine, WebServer& web_server) {
+    nlohmann::json msg;
+    msg["type"] = "config";
+    nlohmann::json cfg;
+    cfg["max_depth"] = engine.get_max_depth();
+    cfg["top_n"] = engine.get_top_n();
+    cfg["top_n_vector"] = engine.get_top_n_vector();
+    cfg["heuristic_weight"] = engine.get_heuristic_weight();
+    cfg["adaptive_weight_smoothing"] = engine.get_adaptive_weight_smoothing();
+    cfg["learning_rate"] = engine.get_learning_rate();
+    cfg["temperature"] = engine.get_temperature();
+    cfg["adaptive_scaling"] = engine.get_adaptive_scaling();
+    msg["config"] = cfg;
+    web_server.broadcast(msg.dump());
+}
+
 // Auto-detect the latest .pt checkpoint in a directory, prioritizing checkpoint.pt
 std::string find_latest_checkpoint(const std::string& directory) {
     namespace fs = std::filesystem;
@@ -368,6 +384,7 @@ int handle_play(const std::vector<std::string>& args) {
 
                     std::cout << "  🚀 Starting session (" << mode << ") via Web Interface\n";
                     start_game_thread(mode);
+                    broadcast_config(engine, web_server);
                 } else if (action == "update_config") {
                     if (js.contains("config")) {
                         auto cfg = js["config"];
@@ -398,6 +415,9 @@ int handle_play(const std::vector<std::string>& args) {
                         }
                     }
                     std::cout << "  🔧 Configuration updated via Web Interface\n";
+                    broadcast_config(engine, web_server);
+                } else if (action == "get_config") {
+                    broadcast_config(engine, web_server);
                 } else if (action == "human_move") {
                     if (js.contains("move")) {
                         std::string mv = js["move"];
@@ -711,6 +731,7 @@ int handle_play_human(const std::vector<std::string>& args) {
 
                     std::cout << "  🚀 Starting session (" << mode << ") via Web Interface\n";
                     start_game_thread(mode);
+                    broadcast_config(engine, web_server);
                 } else if (action == "update_config") {
                     if (js.contains("config")) {
                         auto cfg = js["config"];
@@ -741,6 +762,9 @@ int handle_play_human(const std::vector<std::string>& args) {
                         }
                     }
                     std::cout << "  🔧 Configuration updated via Web Interface\n";
+                    broadcast_config(engine, web_server);
+                } else if (action == "get_config") {
+                    broadcast_config(engine, web_server);
                 } else if (action == "human_move") {
                     if (js.contains("move")) {
                         std::string mv = js["move"];

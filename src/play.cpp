@@ -299,6 +299,23 @@ PlayStats self_play_loop(
             double blended_w = alpha * current_w + (1.0 - alpha) * new_w;
             engine.set_heuristic_weight(blended_w);
         }
+
+        // Broadcast updated configuration
+        if (web_server) {
+            nlohmann::json msg;
+            msg["type"] = "config";
+            nlohmann::json cfg;
+            cfg["max_depth"] = engine.get_max_depth();
+            cfg["top_n"] = engine.get_top_n();
+            cfg["top_n_vector"] = engine.get_top_n_vector();
+            cfg["heuristic_weight"] = engine.get_heuristic_weight();
+            cfg["adaptive_weight_smoothing"] = engine.get_adaptive_weight_smoothing();
+            cfg["learning_rate"] = engine.get_learning_rate();
+            cfg["temperature"] = engine.get_temperature();
+            cfg["adaptive_scaling"] = engine.get_adaptive_scaling();
+            msg["config"] = cfg;
+            web_server->broadcast(msg.dump());
+        }
     }
 
     // Save final checkpoint
