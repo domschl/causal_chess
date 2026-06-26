@@ -231,6 +231,9 @@ float Engine::_search(chess::Board& board, int depth, std::vector<chess::Move>& 
     // 2. Leaf evaluation (no gradients)
     if (depth <= 0) {
         pv.clear();
+        if (config.heuristic_weight >= 1.0) {
+            return _calculate_heuristic(board);
+        }
         float nn_val = evaluate(board);
         if (config.heuristic_weight <= 0.0) {
             return nn_val;
@@ -319,6 +322,18 @@ float Engine::_search(chess::Board& board, int depth, std::vector<chess::Move>& 
 
 std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& board, const chess::Movelist& moves) {
     positions_evaluated += moves.size();
+    if (config.heuristic_weight >= 1.0) {
+        std::vector<std::pair<chess::Move, float>> scored_moves;
+        scored_moves.reserve(moves.size());
+        for (const auto& move : moves) {
+            board.makeMove(move);
+            float score = _calculate_heuristic(board);
+            board.unmakeMove(move);
+            scored_moves.emplace_back(move, score);
+        }
+        return scored_moves;
+    }
+
     std::vector<chess::Board> child_boards;
     child_boards.reserve(moves.size());
 
@@ -354,6 +369,9 @@ std::vector<std::pair<chess::Move, float>> Engine::_score_moves(chess::Board& bo
 }
 
 void Engine::_td_update(const chess::Board& board, float target_value) {
+    if (config.heuristic_weight >= 1.0) {
+        return;
+    }
     auto start_f = std::chrono::steady_clock::now();
     torch::Tensor orig_tensor = board_to_tensor(board);
     // Flip along files dimension (dim 2) for horizontal symmetry
@@ -488,6 +506,7 @@ double Engine::get_avg_heuristic_nn_divergence() const {
 
 void Engine::train_on_outcome(const std::vector<chess::Board>& boards, float outcome) {
     std::lock_guard<std::recursive_mutex> lock(config_mutex);
+    if (config.heuristic_weight >= 1.0) return;
     if (boards.empty()) return;
     auto train_start = std::chrono::steady_clock::now();
 

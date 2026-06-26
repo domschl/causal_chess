@@ -78,9 +78,16 @@ Causal Chess provides extensive options via CLI arguments and the Web interface.
 - `--depth <n>` (default: `4`): The maximum search depth of the selective tree search.
 - `--top-n <val>` (default: `5`): Moves to expand per node. Can be specified as a single integer (constant width) or a comma-separated list matching the search depth (e.g., `5,4,3,2` for tapered branchiness).
 - `--heuristic-weight <val>` (default: `0.5`): Initial weight $w$ given to the handcrafted evaluation.
+  - Set to `0` to completely disable the handcrafted heuristic (runs pure neural network evaluation).
+  - Set to `1` to completely disable the neural network evaluation and all training/learning loops (runs pure handcrafted heuristic engine).
 - `--adaptive-weight-smoothing <val>` (default: `0.8`): The smoothing factor $\alpha$ for the adaptive heuristic weight controller.
 - `--lr <val>` (default: `1e-4`): The base learning rate.
 - `--adaptive-scaling`: Flag to enable dynamic scaling of post-game training epochs and live learning rates based on training stability.
+
+### Mode Switching & Debugging Options
+You can configure the blending ratio to isolate either component of the hybrid evaluation:
+- **Pure Neural Network Engine**: Pass `--heuristic-weight 0` to disable the material/space control heuristic. Leaf evaluation will rely entirely on network output.
+- **Pure Handcrafted Heuristic Engine**: Pass `--heuristic-weight 1` to disable the neural network completely. This disables forward-pass execution in leaf/move scoring, online TD updates, and post-game training, transforming the engine into a standard heuristic search tool. This is extremely useful for debugging the tree search and testing handcrafted weights.
 
 ---
 

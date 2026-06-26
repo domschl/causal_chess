@@ -656,6 +656,26 @@
         .promo-cancel-btn:hover {
             color: #ff4d4d;
         }
+        /* Premium custom scrollbar styling */
+        .candidates-panel::-webkit-scrollbar,
+        #history-moves-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .candidates-panel::-webkit-scrollbar-track,
+        #history-moves-list::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 3px;
+        }
+        .candidates-panel::-webkit-scrollbar-thumb,
+        #history-moves-list::-webkit-scrollbar-thumb {
+            background: rgba(0, 240, 255, 0.3);
+            border-radius: 3px;
+            transition: background 0.2s;
+        }
+        .candidates-panel::-webkit-scrollbar-thumb:hover,
+        #history-moves-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 240, 255, 0.6);
+        }
     </style>
     <!-- Local Fonts & Chart.js -->
     <link href="fonts.css" rel="stylesheet">
@@ -760,11 +780,14 @@
                         <div class="chessboard-container">
                             <div class="chessboard" id="live-board"></div>
                         </div>
-                        <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
-                            <div style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-                                Click on pieces to make your moves when playing against the model!
+                        <div class="candidates-panel" id="history-panel" style="background: rgba(0, 0, 0, 0.1); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+                            <h3 style="margin: 0 0 4px 0; font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; text-align: center;">Move History</h3>
+                            <div id="history-moves-list" style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: 35px 1fr 1fr; gap: 6px 12px; font-family: monospace; font-size: 0.95rem; line-height: 1.4; padding-right: 4px; align-content: start;">
+                                <div style="grid-column: span 3; color: var(--text-muted); font-size: 0.85rem; text-align: center; padding-top: 20px;">
+                                    Click on pieces to make your moves when playing against the model!
+                                </div>
                             </div>
-                            <div id="game-status-announcer" style="text-align: center; font-size: 1.1rem; font-weight: 800; color: var(--neon-blue);"></div>
+                            <div id="game-status-announcer" style="text-align: center; font-size: 1.1rem; font-weight: 800; color: var(--neon-blue); min-height: 1.5rem;"></div>
                         </div>
                     </div>
                 </div>
@@ -851,6 +874,7 @@
         const liveBoardEl = document.getElementById('live-board');
         const thinkingBoardEl = document.getElementById('thinking-board');
         const candidatesPanelEl = document.getElementById('candidates-panel');
+        const historyMovesListEl = document.getElementById('history-moves-list');
 
         const gameIndexEl = document.getElementById('game-index');
         const gameTurnEl = document.getElementById('game-turn');
@@ -1109,7 +1133,7 @@
                     maintainAspectRatio: false,
                     scales: {
                         x: { grid: { display: false }, ticks: { color: '#64748b', font: { size: 9 } } },
-                        y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } }
+                        y: { type: 'logarithmic', grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8' } }
                     },
                     plugins: {
                         legend: { labels: { color: '#e2e8f0', font: { size: 9 } } }
@@ -1206,6 +1230,7 @@
                             sq.className = `square ${(parseInt(sq.dataset.rank) + parseInt(sq.dataset.file)) % 2 === 0 ? 'light' : 'dark'}`;
                         });
                         announcerEl.textContent = '';
+                        renderMoveHistory(data.move_history || []);
                     } 
                     else if (data.type === 'config') {
                         const cfg = data.config;
@@ -1385,6 +1410,46 @@
 
                 candidatesPanelEl.appendChild(item);
             });
+        }
+
+        function renderMoveHistory(moveHistory) {
+            if (!historyMovesListEl) return;
+            historyMovesListEl.innerHTML = '';
+            if (!moveHistory || moveHistory.length === 0) {
+                const placeholder = document.createElement('div');
+                placeholder.style.gridColumn = 'span 3';
+                placeholder.style.color = 'var(--text-muted)';
+                placeholder.style.fontSize = '0.85rem';
+                placeholder.style.textAlign = 'center';
+                placeholder.style.paddingTop = '20px';
+                placeholder.textContent = 'Click on pieces to make your moves when playing against the model!';
+                historyMovesListEl.appendChild(placeholder);
+                return;
+            }
+
+            for (let i = 0; i < moveHistory.length; i += 2) {
+                const moveNum = Math.floor(i / 2) + 1;
+                
+                const numSpan = document.createElement('span');
+                numSpan.style.color = 'var(--text-muted)';
+                numSpan.textContent = `${moveNum}.`;
+                
+                const whiteMoveSpan = document.createElement('span');
+                whiteMoveSpan.style.color = '#fff';
+                whiteMoveSpan.style.fontWeight = '500';
+                whiteMoveSpan.textContent = moveHistory[i];
+                
+                const blackMoveSpan = document.createElement('span');
+                blackMoveSpan.style.color = '#ccc';
+                blackMoveSpan.style.fontWeight = '500';
+                blackMoveSpan.textContent = moveHistory[i + 1] || '';
+
+                historyMovesListEl.appendChild(numSpan);
+                historyMovesListEl.appendChild(whiteMoveSpan);
+                historyMovesListEl.appendChild(blackMoveSpan);
+            }
+            
+            historyMovesListEl.scrollTop = historyMovesListEl.scrollHeight;
         }
 
         // Outbound WS triggers

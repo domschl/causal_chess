@@ -435,6 +435,37 @@ void test_move_count_heuristic() {
     std::cout << "PASSED\n";
 }
 
+void test_pure_heuristic_mode() {
+    std::cout << "Running: test_pure_heuristic_mode... ";
+
+    SearchConfig config;
+    config.max_depth = 2;
+    config.top_n = 2;
+    config.device = "cpu";
+    config.heuristic_weight = 1.0;
+
+    Engine engine(config);
+    engine.reset_stats();
+
+    chess::Board board; // Start position
+
+    // 1. Search a position
+    auto [move, score] = engine.search_position(board, 0.0, nullptr);
+
+    // 2. Assert no NN forward passes or backward passes were performed
+    assert(engine.get_forward_time_secs() == 0.0);
+    assert(engine.get_backprop_time_secs() == 0.0);
+    assert(engine.get_update_count() == 0);
+
+    // 3. Run a training step on outcome and assert it does nothing
+    std::vector<chess::Board> game_history = {board};
+    engine.train_on_outcome(game_history, 1.0f);
+    assert(engine.get_backprop_time_secs() == 0.0);
+    assert(engine.get_update_count() == 0);
+
+    std::cout << "PASSED\n";
+}
+
 int main() {
     std::cout << "============================================================\n";
     std::cout << "Starting C++ Causal Chess Unit Tests\n";
@@ -453,6 +484,7 @@ int main() {
         test_top_n_vector_validation_and_search();
         test_adaptive_weight_controller();
         test_move_count_heuristic();
+        test_pure_heuristic_mode();
 
         std::cout << "============================================================\n";
         std::cout << "All C++ Unit Tests PASSED successfully!\n";

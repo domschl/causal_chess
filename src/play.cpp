@@ -85,7 +85,7 @@ PlayStats self_play_loop(
         std::vector<chess::Board> visited_boards;
         int move_count = 0;
 
-        engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, "");
+        engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, "", moves_san);
         // Broadcast starting position
         if (web_server) {
             nlohmann::json pos_msg;
@@ -94,6 +94,7 @@ PlayStats self_play_loop(
             pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
             pos_msg["game_index"] = start_game_num + game_num;
             pos_msg["last_move"] = "";
+            pos_msg["move_history"] = moves_san;
             web_server->broadcast(pos_msg.dump());
         }
 
@@ -121,7 +122,7 @@ PlayStats self_play_loop(
             board.makeMove(best_move);
             move_count++;
 
-            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, san);
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, san, moves_san);
             // Broadcast move position update
             if (web_server) {
                 nlohmann::json pos_msg;
@@ -130,6 +131,7 @@ PlayStats self_play_loop(
                 pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
                 pos_msg["game_index"] = start_game_num + game_num;
                 pos_msg["last_move"] = san;
+                pos_msg["move_history"] = moves_san;
                 web_server->broadcast(pos_msg.dump());
             }
         }
@@ -292,7 +294,7 @@ PlayStats self_play_loop(
         }
 
         // Scheme A: Adaptive weight controller (Divergence-based Monotonic Annealing)
-        if (initial_w > 0.0) {
+        if (initial_w > 0.0 && initial_w < 1.0 && engine.get_heuristic_weight() < 1.0) {
             double avg_div = engine.get_avg_heuristic_nn_divergence();
             double target_w = initial_w * std::max(0.0, std::min(1.0, avg_div / 0.15));
             double current_w = engine.get_heuristic_weight();
@@ -444,6 +446,7 @@ std::string preprocess_move_input(const std::string& raw_input) {
 
 void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_server) {
     chess::Board board;
+    std::vector<std::string> moves_san;
 
     std::cout << "Game started! You are playing as " 
               << (human_color == chess::Color::WHITE ? "White" : "Black") << ".\n";
@@ -451,7 +454,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
         std::cout << "Enter your moves in SAN (e.g. e4, Nf3) or UCI (e.g. e2e4) format.\n";
     }
 
-    engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, "");
+    engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, "", moves_san);
     if (web_server) {
         engine.clear_human_moves();
         nlohmann::json pos_msg;
@@ -460,6 +463,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
         pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
         pos_msg["game_index"] = 0;
         pos_msg["last_move"] = "";
+        pos_msg["move_history"] = moves_san;
         web_server->broadcast(pos_msg.dump());
     }
 
@@ -556,8 +560,9 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
             std::string san = safe_move_to_san(board, move);
             std::cout << "You played: " << san << "\n";
             board.makeMove(move);
+            moves_san.push_back(san);
 
-            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san);
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san, moves_san);
             if (web_server) {
                 nlohmann::json pos_msg;
                 pos_msg["type"] = "position";
@@ -565,6 +570,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
                 pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
                 pos_msg["game_index"] = 0;
                 pos_msg["last_move"] = san;
+                pos_msg["move_history"] = moves_san;
                 web_server->broadcast(pos_msg.dump());
             }
         } else {
@@ -578,8 +584,9 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
             std::string san = safe_move_to_san(board, best_move);
             std::cout << "Model played: " << san << " (eval: " << value << ")\n";
             board.makeMove(best_move);
+            moves_san.push_back(san);
 
-            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san);
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san, moves_san);
             if (web_server) {
                 nlohmann::json pos_msg;
                 pos_msg["type"] = "position";
@@ -587,6 +594,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
                 pos_msg["turn"] = board.sideToMove() == chess::Color::WHITE ? "w" : "b";
                 pos_msg["game_index"] = 0;
                 pos_msg["last_move"] = san;
+                pos_msg["move_history"] = moves_san;
                 web_server->broadcast(pos_msg.dump());
             }
         }
