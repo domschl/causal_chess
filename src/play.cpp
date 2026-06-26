@@ -85,6 +85,7 @@ PlayStats self_play_loop(
         std::vector<chess::Board> visited_boards;
         int move_count = 0;
 
+        engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, "");
         // Broadcast starting position
         if (web_server) {
             nlohmann::json pos_msg;
@@ -120,6 +121,7 @@ PlayStats self_play_loop(
             board.makeMove(best_move);
             move_count++;
 
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", start_game_num + game_num, san);
             // Broadcast move position update
             if (web_server) {
                 nlohmann::json pos_msg;
@@ -448,6 +450,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
         std::cout << "Enter your moves in SAN (e.g. e4, Nf3) or UCI (e.g. e2e4) format.\n";
     }
 
+    engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, "");
     if (web_server) {
         engine.clear_human_moves();
         nlohmann::json pos_msg;
@@ -553,6 +556,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
             std::cout << "You played: " << san << "\n";
             board.makeMove(move);
 
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san);
             if (web_server) {
                 nlohmann::json pos_msg;
                 pos_msg["type"] = "position";
@@ -574,6 +578,7 @@ void play_human_loop(Engine& engine, chess::Color human_color, WebServer* web_se
             std::cout << "Model played: " << san << " (eval: " << value << ")\n";
             board.makeMove(best_move);
 
+            engine.set_active_position(board.getFen(), board.sideToMove() == chess::Color::WHITE ? "w" : "b", 0, san);
             if (web_server) {
                 nlohmann::json pos_msg;
                 pos_msg["type"] = "position";

@@ -122,6 +122,22 @@ public:
     float test_calculate_heuristic(const chess::Board& board) {
         return _calculate_heuristic(board);
     }
+
+    void set_active_position(const std::string& fen, const std::string& turn, int game_index, const std::string& last_move) {
+        std::lock_guard<std::mutex> lock(fen_mutex);
+        active_fen = fen;
+        active_turn = turn;
+        active_game_index = game_index;
+        active_last_move = last_move;
+    }
+
+    void get_active_position(std::string& fen, std::string& turn, int& game_index, std::string& last_move) const {
+        std::lock_guard<std::mutex> lock(fen_mutex);
+        fen = active_fen;
+        turn = active_turn;
+        game_index = active_game_index;
+        last_move = active_last_move;
+    }
     
     double get_live_lr_scale() const {
         std::lock_guard<std::recursive_mutex> lock(config_mutex);
@@ -239,6 +255,12 @@ private:
     std::atomic<bool> stop_requested{false};
     std::atomic<bool> reset_requested{false};
     std::deque<std::string> human_moves;
+
+    std::string active_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    std::string active_turn = "w";
+    int active_game_index = 0;
+    std::string active_last_move = "";
+    mutable std::mutex fen_mutex;
 
     mutable std::recursive_mutex config_mutex;
 };

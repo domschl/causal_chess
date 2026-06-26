@@ -418,6 +418,16 @@ int handle_play(const std::vector<std::string>& args) {
                     broadcast_config(engine, web_server);
                 } else if (action == "get_config") {
                     broadcast_config(engine, web_server);
+                    std::string fen, turn, last_move;
+                    int game_index;
+                    engine.get_active_position(fen, turn, game_index, last_move);
+                    nlohmann::json pos_msg;
+                    pos_msg["type"] = "position";
+                    pos_msg["fen"] = fen;
+                    pos_msg["turn"] = turn;
+                    pos_msg["game_index"] = game_index;
+                    pos_msg["last_move"] = last_move;
+                    web_server.broadcast(pos_msg.dump());
                 } else if (action == "human_move") {
                     if (js.contains("move")) {
                         std::string mv = js["move"];
@@ -765,6 +775,16 @@ int handle_play_human(const std::vector<std::string>& args) {
                     broadcast_config(engine, web_server);
                 } else if (action == "get_config") {
                     broadcast_config(engine, web_server);
+                    std::string fen, turn, last_move;
+                    int game_index;
+                    engine.get_active_position(fen, turn, game_index, last_move);
+                    nlohmann::json pos_msg;
+                    pos_msg["type"] = "position";
+                    pos_msg["fen"] = fen;
+                    pos_msg["turn"] = turn;
+                    pos_msg["game_index"] = game_index;
+                    pos_msg["last_move"] = last_move;
+                    web_server.broadcast(pos_msg.dump());
                 } else if (action == "human_move") {
                     if (js.contains("move")) {
                         std::string mv = js["move"];
