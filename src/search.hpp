@@ -247,6 +247,8 @@ private:
     void _td_update(const chess::Board& board, float target_value);
     static std::optional<float> _terminal_value(const chess::Board& board);
     float _space_control_score(const chess::Board& board);
+    float _degree_freedom_score(const chess::Board& board);
+    float _king_safety_activity_score(const chess::Board& board);
     float _quiescence_search(chess::Board& board, float alpha, float beta, int q_depth);
     float _static_material_score(const chess::Board& board);
     float _calculate_heuristic(const chess::Board& board);

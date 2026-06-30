@@ -1124,7 +1124,7 @@
 
         // Charts
         let lossChart, npsChart, evalChart;
-        const lossData = [], lossLabels = [];
+        const lossData = [], lossMAData = [], lossLabels = [];
         const npsData = [], npsLabels = [];
         const evalLabels = [];
         const heuristicEvalData = [];
@@ -1137,16 +1137,28 @@
                 type: 'line',
                 data: {
                     labels: lossLabels,
-                    datasets: [{
-                        label: 'TD Learning Loss',
-                        data: lossData,
-                        borderColor: '#bd00ff',
-                        backgroundColor: 'rgba(189, 0, 255, 0.05)',
-                        tension: 0.35,
-                        fill: true,
-                        borderWidth: 2,
-                        pointRadius: 2
-                    }]
+                    datasets: [
+                        {
+                            label: 'Raw TD Loss',
+                            data: lossData,
+                            borderColor: 'rgba(189, 0, 255, 0.4)',
+                            backgroundColor: 'rgba(189, 0, 255, 0.02)',
+                            tension: 0.35,
+                            fill: true,
+                            borderWidth: 1.5,
+                            pointRadius: 1
+                        },
+                        {
+                            label: 'Moving Average (20)',
+                            data: lossMAData,
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'transparent',
+                            tension: 0.35,
+                            fill: false,
+                            borderWidth: 3,
+                            pointRadius: 0
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
@@ -1428,10 +1440,17 @@
 
                         lossLabels.push(`G${data.game}`);
                         lossData.push(data.loss);
-                        if (lossData.length > 30) {
-                            lossLabels.shift();
-                            lossData.shift();
+                        
+                        // Calculate moving average (last 20 games)
+                        const windowSize = 20;
+                        let sum = 0;
+                        const startIdx = Math.max(0, lossData.length - windowSize);
+                        const count = lossData.length - startIdx;
+                        for (let i = startIdx; i < lossData.length; i++) {
+                            sum += lossData[i];
                         }
+                        lossMAData.push(sum / count);
+                        
                         lossChart.update();
 
                         npsLabels.push(`G${data.game}`);

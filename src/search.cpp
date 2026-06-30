@@ -818,9 +818,30 @@ float Engine::_space_control_score(const chess::Board& board) {
     double white_score = 0.0;
     double black_score = 0.0;
 
+    auto get_attack_weight = [&](chess::Color color, chess::Square sq) -> double {
+        chess::Bitboard atks = chess::attacks::attackers(board, color, sq);
+        if (!atks) return 0.0;
+        if (atks & board.pieces(chess::PieceType::PAWN, color)) {
+            return 1.0; // Pawn (highest weight)
+        }
+        if (atks & (board.pieces(chess::PieceType::KNIGHT, color) | board.pieces(chess::PieceType::BISHOP, color))) {
+            return 0.6; // Knight / Bishop
+        }
+        if (atks & board.pieces(chess::PieceType::ROOK, color)) {
+            return 0.3; // Rook
+        }
+        if (atks & board.pieces(chess::PieceType::QUEEN, color)) {
+            return 0.1; // Queen (lowest weight)
+        }
+        if (atks & board.pieces(chess::PieceType::KING, color)) {
+            return 0.1; // King
+        }
+        return 0.0;
+    };
+
     for (int sq_idx = 0; sq_idx < 64; ++sq_idx) {
         chess::Square sq(sq_idx);
-        double weight = 0.1; // Default: Rest of the board
+        double weight = 0.25; // Default: Rest of the board
         
         int rank = sq_idx >> 3;
         int file = sq_idx & 7;
@@ -831,15 +852,11 @@ float Engine::_space_control_score(const chess::Board& board) {
         }
         // Check if inside c3-f6 (ranks 2-5, files 2-5, 0-indexed)
         else if (rank >= 2 && rank <= 5 && file >= 2 && file <= 5) {
-            weight = 0.4;
+            weight = 0.5;
         }
 
-        if (board.isAttacked(sq, chess::Color::WHITE)) {
-            white_score += weight;
-        }
-        if (board.isAttacked(sq, chess::Color::BLACK)) {
-            black_score += weight;
-        }
+        white_score += weight * get_attack_weight(chess::Color::WHITE, sq);
+        black_score += weight * get_attack_weight(chess::Color::BLACK, sq);
     }
 
     // Phase factor: active non-pawns / 16.0
@@ -850,6 +867,158 @@ float Engine::_space_control_score(const chess::Board& board) {
     double phase_factor = static_cast<double>(non_pawns) / 16.0;
 
     return static_cast<float>((white_score - black_score) * phase_factor);
+}
+
+float Engine::_king_safety_activity_score(const chess::Board& board) {
+    // Phase factor: active non-pawns / 16.0
+    int non_pawns = board.pieces(chess::PieceType::KNIGHT).count() +
+                    board.pieces(chess::PieceType::BISHOP).count() +
+                    board.pieces(chess::PieceType::ROOK).count() +
+                    board.pieces(chess::PieceType::QUEEN).count();
+    double phase_factor = static_cast<double>(non_pawns) / 16.0;
+    if (phase_factor > 1.0) phase_factor = 1.0;
+
+    auto get_pawn_shield_score = [&](chess::Color color, chess::Square king_sq) -> double {
+        int file = king_sq.file();
+        double score = 0.0;
+        
+        // We only care about pawn shield if king is on the sides (file <= 2 or file >= 5)
+        if (file <= 2) { // Queenside
+            // Target files for pawns: a, b, c (0, 1, 2)
+            for (int f = 0; f <= 2; ++f) {
+                bool has_pawn = false;
+                // Check rank 2, 3 (for White) or 7, 6 (for Black)
+                int r_start = (color == chess::Color::WHITE) ? 1 : 4;
+                int r_end = (color == chess::Color::WHITE) ? 3 : 6;
+                for (int r = r_start; r <= r_end; ++r) {
+                    chess::Square p_sq{chess::File(f), chess::Rank(r)};
+                    if (board.pieces(chess::PieceType::PAWN, color).check(p_sq.index())) {
+                        has_pawn = true;
+                        // Reward pawns closer to the king (rank 2 for white, rank 7 for black)
+                        if ((color == chess::Color::WHITE && r == 1) || (color == chess::Color::BLACK && r == 6)) {
+                            score += 0.2;
+                        } else {
+                            score += 0.1;
+                        }
+                    }
+                }
+                if (!has_pawn) {
+                    score -= 0.15; // Penalty for open file in front of king
+                }
+            }
+        } else if (file >= 5) { // Kingside
+            // Target files for pawns: f, g, h (5, 6, 7)
+            for (int f = 5; f <= 7; ++f) {
+                bool has_pawn = false;
+                int r_start = (color == chess::Color::WHITE) ? 1 : 4;
+                int r_end = (color == chess::Color::WHITE) ? 3 : 6;
+                for (int r = r_start; r <= r_end; ++r) {
+                    chess::Square p_sq{chess::File(f), chess::Rank(r)};
+                    if (board.pieces(chess::PieceType::PAWN, color).check(p_sq.index())) {
+                        has_pawn = true;
+                        if ((color == chess::Color::WHITE && r == 1) || (color == chess::Color::BLACK && r == 6)) {
+                            score += 0.2;
+                        } else {
+                            score += 0.1;
+                        }
+                    }
+                }
+                if (!has_pawn) {
+                    score -= 0.15;
+                }
+            }
+        } else {
+            // King is in the center (file 3 or 4: d, e). Penalize central king in opening/midgame!
+            score = -0.5;
+        }
+        return score;
+    };
+
+    auto get_king_zone_attack_penalty = [&](chess::Color color, chess::Square king_sq) -> double {
+        double penalty = 0.0;
+        chess::Color opponent = ~color;
+        // Generate king attacks (the 8 surrounding squares)
+        chess::Bitboard zone = chess::attacks::king(king_sq);
+        // Include the king square itself!
+        zone |= chess::Bitboard::fromSquare(king_sq);
+        
+        while (zone) {
+            chess::Square sq(zone.pop());
+            if (board.isAttacked(sq, opponent)) {
+                // Check the strength of attackers
+                chess::Bitboard atks = chess::attacks::attackers(board, opponent, sq);
+                if (atks & board.pieces(chess::PieceType::QUEEN, opponent)) {
+                    penalty += 0.15;
+                }
+                if (atks & board.pieces(chess::PieceType::ROOK, opponent)) {
+                    penalty += 0.10;
+                }
+                if (atks & (board.pieces(chess::PieceType::KNIGHT, opponent) | board.pieces(chess::PieceType::BISHOP, opponent))) {
+                    penalty += 0.05;
+                }
+            }
+        }
+        return penalty;
+    };
+
+    auto get_player_king_score = [&](chess::Color color) -> double {
+        chess::Square king_sq = board.kingSq(color);
+        
+        // --- Opening & Midgame: King Safety and Castling ---
+        double castling_bonus = 0.0;
+        auto cr = board.castlingRights();
+        if (cr.has(color)) {
+            castling_bonus = 0.3; // Encourage castling rights
+        } else {
+            int castled_rank = (color == chess::Color::WHITE) ? 0 : 7;
+            int king_rank = king_sq.rank();
+            int king_file = king_sq.file();
+            if (king_rank == castled_rank && (king_file == 6 || king_file == 2)) {
+                castling_bonus = 0.5; // Castled and safe!
+            }
+        }
+        
+        double pawn_shield = get_pawn_shield_score(color, king_sq);
+        double attack_penalty = get_king_zone_attack_penalty(color, king_sq);
+        
+        double safety_score = castling_bonus + pawn_shield - attack_penalty;
+        
+        // --- Endgame: King Activity ---
+        int r = king_sq.rank();
+        int f = king_sq.file();
+        int dr = std::abs(r - 3) < std::abs(r - 4) ? std::abs(r - 3) : std::abs(r - 4);
+        int df = std::abs(f - 3) < std::abs(f - 4) ? std::abs(f - 3) : std::abs(f - 4);
+        int dist = dr + df;
+        double activity_score = 1.0 - 0.15 * dist;
+        
+        return phase_factor * safety_score + (1.0 - phase_factor) * activity_score;
+    };
+
+    double white_val = get_player_king_score(chess::Color::WHITE);
+    double black_val = get_player_king_score(chess::Color::BLACK);
+
+    return static_cast<float>(white_val - black_val);
+}
+
+float Engine::_degree_freedom_score(const chess::Board& board) {
+    // Calculate degree of freedom (move count) relative to White
+    chess::Movelist active_moves;
+    chess::movegen::legalmoves(active_moves, board);
+    int active_count = active_moves.size();
+
+    chess::Board temp_board = board;
+    temp_board.makeNullMove();
+    chess::Movelist passive_moves;
+    chess::movegen::legalmoves(passive_moves, temp_board);
+    int passive_count = passive_moves.size();
+
+    float move_count = 0.0f;
+    if (board.sideToMove() == chess::Color::WHITE) {
+        move_count = static_cast<float>(active_count - passive_count);
+    } else {
+        move_count = static_cast<float>(passive_count - active_count);
+    }
+  return move_count;
 }
 
 float Engine::_static_material_score(const chess::Board& board) {
@@ -937,28 +1106,16 @@ float Engine::_quiescence_search(chess::Board& board, float alpha, float beta, i
 
 float Engine::_calculate_heuristic(const chess::Board& board) {
     chess::Board board_copy = board;
+    const float space_diff_weight = 0.1f; // 0.1f;
+    const float move_count_weight = 0.05f; // 0.05f;
+    const float king_heuristic_weight = 0.1f; // 0.15f;
     float material_diff = _quiescence_search(board_copy, -1e9f, 1e9f, 0);
-    float space_diff = _space_control_score(board);
-
-    // Calculate degree of freedom (move count) relative to White
-    chess::Movelist active_moves;
-    chess::movegen::legalmoves(active_moves, board);
-    int active_count = active_moves.size();
-
-    chess::Board temp_board = board;
-    temp_board.makeNullMove();
-    chess::Movelist passive_moves;
-    chess::movegen::legalmoves(passive_moves, temp_board);
-    int passive_count = passive_moves.size();
-
-    float move_count = 0.0f;
-    if (board.sideToMove() == chess::Color::WHITE) {
-        move_count = static_cast<float>(active_count - passive_count);
-    } else {
-        move_count = static_cast<float>(passive_count - active_count);
-    }
-
-    float total_units = material_diff + 0.1f * space_diff + 0.05f * move_count;
+    float space_diff = 0.0f;
+    float degr_freedom = 0.0f;
+    float total_units = material_diff;
+    if (space_diff_weight > 0.0f) total_units += space_diff_weight * _space_control_score(board);
+    if (move_count_weight > 0.0f) total_units += move_count_weight * _degree_freedom_score(board);
+    if (king_heuristic_weight > 0.0f) total_units += king_heuristic_weight * _king_safety_activity_score(board);
     return 0.5f + 0.5f * std::tanh(total_units / 8.0f);
 }
 

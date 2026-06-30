@@ -321,14 +321,28 @@ PlayStats self_play_loop(
             }
         }
 
-        // Scheme A: Adaptive weight controller (Divergence-based Monotonic Annealing)
+        // Scheme A: Adaptive weight controller (Divergence-based Monotonic Annealing with linear game decay)
         if (initial_w > 0.0 && initial_w < 1.0 && engine.get_heuristic_weight() < 1.0) {
             double avg_div = engine.get_avg_heuristic_nn_divergence();
-            double target_w = initial_w * std::max(0.0, std::min(1.0, avg_div / 0.15));
+            
+            // Linear decay factor over 1000 games
+            const double decay_horizon = 1000.0;
+            double current_absolute_game = static_cast<double>(start_game_num + game_num);
+            double decay_factor = std::max(0.0, 1.0 - current_absolute_game / decay_horizon);
+            
+            // To handle resumes correctly without double-decaying, reconstruct the initial undecayed weight
+            double initial_decay_factor = std::max(0.001, 1.0 - static_cast<double>(start_game_num) / decay_horizon);
+            double undecayed_initial_w = initial_w / initial_decay_factor;
+            
+            // Scale target weight based on both divergence and the game-based decay factor
+            double target_w = undecayed_initial_w * decay_factor * std::max(0.0, std::min(1.0, avg_div / 0.15));
             double current_w = engine.get_heuristic_weight();
             double new_w = std::min(current_w, target_w);
             double alpha = engine.get_adaptive_weight_smoothing();
             double blended_w = alpha * current_w + (1.0 - alpha) * new_w;
+            if (blended_w < 0.001) {
+                blended_w = 0.0;
+            }
             engine.set_heuristic_weight(blended_w);
         }
 
