@@ -325,8 +325,8 @@ PlayStats self_play_loop(
         if (initial_w > 0.0 && initial_w < 1.0 && engine.get_heuristic_weight() < 1.0) {
             double avg_div = engine.get_avg_heuristic_nn_divergence();
             
-            // Linear decay factor over 1000 games
-            const double decay_horizon = 1000.0;
+            // Linear decay factor over N games
+            const double decay_horizon = 100.0;
             double current_absolute_game = static_cast<double>(start_game_num + game_num);
             double decay_factor = std::max(0.0, 1.0 - current_absolute_game / decay_horizon);
             

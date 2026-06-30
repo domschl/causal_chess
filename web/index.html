@@ -736,7 +736,7 @@
 
                 <div class="slider-group">
                     <div class="slider-label">
-                        <span>Heuristic Weight (w)</span>
+                        <span>Heuristic Weight (w) <span id="weight-status" style="font-size: 0.65rem; font-weight: 700; margin-left: 6px; padding: 2px 6px; border-radius: 4px; vertical-align: middle; border: 1px solid rgba(16, 185, 129, 0.3); background-color: rgba(16, 185, 129, 0.15); color: #10b981;">ACTIVE</span></span>
                         <span class="slider-val" id="weight-val">0.50</span>
                     </div>
                     <input type="range" id="weight-slider" min="0.0" max="1.0" step="0.05" value="0.50" oninput="updateSliderLabel('weight', parseFloat(this.value).toFixed(2))" onchange="sendConfigUpdate()">
@@ -957,6 +957,28 @@
 
         function updateSliderLabel(param, value) {
             document.getElementById(`${param}-val`).textContent = value;
+            if (param === 'weight') {
+                const statusEl = document.getElementById('weight-status');
+                if (statusEl) {
+                    const weightVal = parseFloat(value);
+                    if (weightVal <= 0.0) {
+                        statusEl.textContent = 'OFF';
+                        statusEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                        statusEl.style.color = '#ef4444';
+                        statusEl.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                    } else if (weightVal < 0.1) {
+                        statusEl.textContent = 'DECAYING';
+                        statusEl.style.backgroundColor = 'rgba(245, 158, 11, 0.15)';
+                        statusEl.style.color = '#f59e0b';
+                        statusEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+                    } else {
+                        statusEl.textContent = 'ACTIVE';
+                        statusEl.style.backgroundColor = 'rgba(16, 185, 129, 0.15)';
+                        statusEl.style.color = '#10b981';
+                        statusEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                    }
+                }
+            }
         }
 
         function formatLogSlider(value) {
@@ -1146,7 +1168,7 @@
                             tension: 0.35,
                             fill: true,
                             borderWidth: 1.5,
-                            pointRadius: 1
+                            pointRadius: 0
                         },
                         {
                             label: 'Moving Average (20)',
